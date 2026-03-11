@@ -49,7 +49,16 @@ export default function TaskList({ tasks, onAction }: { tasks: Task[], onAction:
                 </div>
                 <p className="text-sm text-slate-500 flex items-center gap-1.5 font-medium">
                   <Clock className="w-4 h-4 text-slate-400" />
-                  {new Date(task.scheduled_time).toLocaleDateString() === new Date().toLocaleDateString() ? 'Today' : 'Tomorrow'} at {new Date(task.scheduled_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 
+                  {(() => {
+                    const taskDate = new Date(task.scheduled_time);
+                    const today = new Date();
+                    const tomorrow = new Date();
+                    tomorrow.setDate(today.getDate() + 1);
+                    const taskDay = taskDate.toLocaleDateString();
+                    if (taskDay === today.toLocaleDateString()) return 'Today';
+                    if (taskDay === tomorrow.toLocaleDateString()) return 'Tomorrow';
+                    return taskDate.toLocaleDateString();
+                  })()} at {new Date(task.scheduled_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 
                   <span className="text-slate-300">•</span> 
                   {task.duration_minutes} mins
                 </p>
@@ -66,7 +75,7 @@ export default function TaskList({ tasks, onAction }: { tasks: Task[], onAction:
               {task.status === 'Pending' && (
                 <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200">
                   <button 
-                    onClick={() => onAction(task.id, 'Missed')}
+                    onClick={() => onAction(task.id, 'Confirmed')}
                     className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-transparent hover:border-slate-200 rounded-lg transition-all w-full sm:w-auto"
                   >
                     DELAY

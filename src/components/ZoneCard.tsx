@@ -62,7 +62,7 @@ export default function ZoneCard({ zone, onUpdate }: { zone: Zone, onUpdate: () 
           <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
             <div 
               className="h-full bg-indigo-500 rounded-full" 
-              style={{ width: `${Math.min((zone.current_growth_day / 120) * 100, 100)}%` }} 
+              style={{ width: `${Math.min((zone.current_growth_day / (zone.crop_type === 'Tomato' ? 120 : 150)) * 100, 100)}%` }} 
             />
           </div>
           <div className="flex justify-between text-xs text-slate-500 mt-1 font-medium">
