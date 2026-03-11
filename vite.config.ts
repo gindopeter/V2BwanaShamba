@@ -1,27 +1,11 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig, loadEnv} from 'vite';
+import {defineConfig} from 'vite';
 
-const htmlPlugin = () => {
+export default defineConfig(() => {
   return {
-    name: 'html-transform',
-    transformIndexHtml(html: string) {
-      return html.replace(
-        '</head>',
-        `<script>window.process = window.process || {}; window.process.env = window.process.env || {}; window.process.env.GEMINI_API_KEY = "${process.env.GEMINI_API_KEY || ''}";</script></head>`
-      );
-    },
-  };
-};
-
-export default defineConfig(({mode}) => {
-  const env = loadEnv(mode, '.', '');
-  return {
-    plugins: [react(), tailwindcss(), htmlPlugin()],
-    define: {
-      'process.env.GEMINI_API_KEY': 'window.process.env.GEMINI_API_KEY',
-    },
+    plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from "express";
 import { createServer as createViteServer } from "vite";
+import { GoogleGenAI } from "@google/genai";
 import db from "./server/db.ts";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -121,6 +122,107 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  // --- Chat API (Gemini) ---
+  app.post("/api/chat", async (req, res) => {
+    try {
+      const { message, image } = req.body;
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ reply: "Gemini API key is not configured. Please add GEMINI_API_KEY to your secrets." });
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+
+      const systemInstruction = `You are 'Mkulima AI' (AI Farm Assistant) for a 5-acre tomato and onion farm in Malivundo, Pwani, Tanzania.
+You help farmers with questions about crops, soil, pest control, irrigation, and fertigation.
+You speak English and Kiswahili. If the user speaks Kiswahili, respond in Kiswahili.
+Be concise, practical, and helpful. Current Date: ${new Date().toISOString()}`;
+
+      let parts: any[] = [];
+      if (image) {
+        parts.push({ inlineData: { mimeType: "image/jpeg", data: image } });
+      }
+      parts.push({ text: message || "What do you see in this image?" });
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ parts }],
+        config: { systemInstruction }
+      });
+
+      res.json({ reply: response.text || "I could not generate a response." });
+    } catch (err: any) {
+      console.error("Chat API Error:", err.message);
+      res.status(500).json({ reply: "Sorry, I encountered an error processing your request." });
+    }
+  });
+
+  // --- Crop Analysis API (Gemini Vision) ---
+  app.post("/api/analyze-crop", async (req, res) => {
+    try {
+      const { zone_id, image } = req.body;
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "Gemini API key is not configured." });
+      }
+
+      const zone = db.prepare('SELECT * FROM zones WHERE id = ?').get(zone_id) as any;
+      if (!zone) {
+        return res.status(404).json({ error: "Zone not found." });
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+
+      const plantingDate = new Date(zone.planting_date);
+      const today = new Date();
+      const growthDay = Math.ceil(Math.abs(today.getTime() - plantingDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      const prompt = `You are an expert agricultural AI analyzing a crop image for a farm in Malivundo, Pwani, Tanzania.
+
+Zone: ${zone.name}
+Crop: ${zone.crop_type}
+Growth Day: ${growthDay}
+Area: ${zone.area_size} acres
+
+Analyze this image and provide:
+1. **Health Assessment** - Overall plant health (Healthy/Warning/Critical)
+2. **Pest Detection** - Check for Tuta Absoluta (tomato) or Thrips (onion) and other common pests
+3. **Disease Signs** - Any visible diseases (blight, fungal infection, etc.)
+4. **Growth Stage Confirmation** - Does the visual match the expected growth day?
+5. **Recommendations** - Immediate actions needed
+
+Be concise and actionable.`;
+
+      const parts: any[] = [
+        { inlineData: { mimeType: "image/jpeg", data: image } },
+        { text: prompt }
+      ];
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ parts }],
+      });
+
+      const analysisText = response.text || "Could not analyze the image.";
+
+      const logStmt = db.prepare('INSERT INTO logs (zone_id, message, severity) VALUES (?, ?, ?)');
+      logStmt.run(zone_id, `Crop analysis performed: ${analysisText.substring(0, 200)}...`, 'Info');
+
+      res.json({ analysis: analysisText, zone_name: zone.name });
+    } catch (err: any) {
+      console.error("Analyze Crop Error:", err.message);
+      res.status(500).json({ error: "Failed to analyze crop image." });
+    }
+  });
+
+  app.get("/api/gemini-session", (req, res) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "Gemini API key is not configured." });
+    }
+    res.json({ apiKey });
+  });
+
   // --- Simulation / Logic Trigger ---
   // In a real app, this would be a cron job. Here we trigger it manually or periodically from the frontend.
   app.post("/api/engine/run-checks", (req, res) => {
@@ -238,10 +340,6 @@ async function startServer() {
     app.use(express.static(path.join(__dirname, "dist"), { index: false }));
     app.get("*", (req, res) => {
       let html = fs.readFileSync(path.join(__dirname, "dist", "index.html"), "utf-8");
-      html = html.replace(
-        '</head>',
-        `<script>window.process = window.process || {}; window.process.env = window.process.env || {}; window.process.env.GEMINI_API_KEY = "${process.env.GEMINI_API_KEY || ''}";</script></head>`
-      );
       res.send(html);
     });
   }
