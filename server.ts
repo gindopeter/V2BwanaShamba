@@ -78,7 +78,7 @@ const isAdmin: RequestHandler = (req, res, next) => {
 
 async function startServer() {
   const app = express();
-  const PORT = 5000;
+  const port = process.env.PORT || 5000;
 
   app.use(express.json({ limit: '10mb' }));
 
@@ -533,8 +533,8 @@ Be concise and actionable.`;
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  app.listen(port, "0.0.0.0", () => {
+    console.log(`App listening on port ${port}`);
   });
 }
 
