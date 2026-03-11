@@ -1,0 +1,5 @@
+{
+  "name": "Mkulima AI",
+  "description": "Intelligent farm management system for Tomato and Onion crops with weather-adjusted irrigation and fertigation scheduling.",
+  "requestFramePermissions": ["camera", "microphone"]
+}
