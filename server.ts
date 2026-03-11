@@ -125,7 +125,7 @@ async function startServer() {
   // --- Chat API (Gemini) ---
   app.post("/api/chat", async (req, res) => {
     try {
-      const { message, image } = req.body;
+      const { message, image, mimeType: clientMimeType } = req.body;
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
         return res.status(500).json({ reply: "Gemini API key is not configured. Please add GEMINI_API_KEY to your secrets." });
@@ -140,7 +140,7 @@ Be concise, practical, and helpful. Current Date: ${new Date().toISOString()}`;
 
       let parts: any[] = [];
       if (image) {
-        parts.push({ inlineData: { mimeType: "image/jpeg", data: image } });
+        parts.push({ inlineData: { mimeType: clientMimeType || "image/jpeg", data: image } });
       }
       parts.push({ text: message || "What do you see in this image?" });
 
