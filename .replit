@@ -5,6 +5,7 @@ packages = ["unzip"]
 
 [agent]
 expertMode = true
+integrations = ["javascript_log_in_with_replit:2.0.0"]
 
 [workflows]
 runButton = "Project"
@@ -32,8 +33,16 @@ outputType = "webview"
 
 [[ports]]
 localPort = 5000
-externalPort = 5000
+externalPort = 80
 
 [[ports]]
 localPort = 24678
-externalPort = 80
+externalPort = 3000
+
+# [[ports]]
+# localPort = 24678
+# externalPort = 3000
+
+# [[ports]]
+# localPort = 24678
+# externalPort = 80

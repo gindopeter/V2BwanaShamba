@@ -3,26 +3,67 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import db from "./server/db.ts";
+import { setupAuth, registerAuthRoutes, isAuthenticated } from "./server/replit_integrations/auth/index.ts";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function getFarmContext(): string {
+  const zones = db.prepare('SELECT * FROM zones').all() as any[];
+  const tasks = db.prepare('SELECT t.*, z.name as zone_name FROM tasks t JOIN zones z ON t.zone_id = z.id ORDER BY t.scheduled_time DESC LIMIT 20').all() as any[];
+  const logs = db.prepare('SELECT l.*, z.name as zone_name FROM logs l LEFT JOIN zones z ON l.zone_id = z.id ORDER BY l.timestamp DESC LIMIT 10').all() as any[];
+
+  const today = new Date();
+
+  const zoneDetails = zones.map((z: any) => {
+    const plantingDate = new Date(z.planting_date);
+    const diffTime = Math.abs(today.getTime() - plantingDate.getTime());
+    const growthDay = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const maxDays = z.crop_type === 'Tomato' ? 120 : 150;
+    const stage = growthDay <= maxDays * 0.25 ? 'Seedling' : growthDay <= maxDays * 0.5 ? 'Vegetative' : growthDay <= maxDays * 0.75 ? 'Flowering' : 'Harvest';
+    return `- ${z.name}: ${z.crop_type}, ${z.area_size} acres, planted ${z.planting_date}, day ${growthDay}/${maxDays} (${stage} stage), irrigation: ${z.irrigation_status}, status: ${z.status}, expected yield: ${z.expected_yield_kg}kg, actual yield: ${z.actual_yield_kg}kg`;
+  }).join('\n');
+
+  const taskDetails = tasks.map((t: any) => {
+    return `- [${t.status}] ${t.task_type} for ${t.zone_name} at ${t.scheduled_time} (${t.duration_minutes}min) - ${t.reasoning || 'No reason'}`;
+  }).join('\n');
+
+  const logDetails = logs.map((l: any) => {
+    return `- [${l.severity}] ${l.zone_name || 'System'}: ${l.message} (${l.timestamp})`;
+  }).join('\n');
+
+  return `
+=== CURRENT FARM DATA ===
+Date: ${today.toISOString().split('T')[0]}
+
+ZONES:
+${zoneDetails || 'No zones configured'}
+
+RECENT TASKS (last 20):
+${taskDetails || 'No tasks'}
+
+RECENT LOGS (last 10):
+${logDetails || 'No logs'}
+=== END FARM DATA ===`;
+}
+
 async function startServer() {
   const app = express();
   const PORT = 5000;
 
-  // Increase payload limit for images
   app.use(express.json({ limit: '10mb' }));
 
-  // API Routes
+  await setupAuth(app);
+  registerAuthRoutes(app);
+
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
 
   // --- Zones API ---
-  app.get("/api/zones", (req, res) => {
+  app.get("/api/zones", isAuthenticated, (req, res) => {
     const zones = db.prepare('SELECT * FROM zones').all();
     
     const zonesWithDetails = zones.map((zone: any) => {
@@ -63,14 +104,14 @@ async function startServer() {
     res.json(zonesWithDetails);
   });
 
-  app.post("/api/zones", (req, res) => {
+  app.post("/api/zones", isAuthenticated, (req, res) => {
     const { name, crop_type, planting_date, area_size } = req.body;
     const stmt = db.prepare('INSERT INTO zones (name, crop_type, planting_date, area_size) VALUES (?, ?, ?, ?)');
     const info = stmt.run(name, crop_type, planting_date, area_size);
     res.json({ id: info.lastInsertRowid });
   });
 
-  app.patch("/api/zones/:id/yield", (req, res) => {
+  app.patch("/api/zones/:id/yield", isAuthenticated, (req, res) => {
     const { actual_yield_kg } = req.body;
     const { id } = req.params;
     const stmt = db.prepare('UPDATE zones SET actual_yield_kg = ?, status = ? WHERE id = ?');
@@ -78,7 +119,7 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  app.post("/api/zones/:id/irrigation", (req, res) => {
+  app.post("/api/zones/:id/irrigation", isAuthenticated, (req, res) => {
     const { status } = req.body; // 'Running' or 'Off'
     const { id } = req.params;
     
@@ -97,7 +138,7 @@ async function startServer() {
   });
 
   // --- Tasks API ---
-  app.get("/api/tasks", (req, res) => {
+  app.get("/api/tasks", isAuthenticated, (req, res) => {
     const tasks = db.prepare(`
       SELECT tasks.*, zones.name as zone_name, zones.crop_type 
       FROM tasks 
@@ -107,14 +148,14 @@ async function startServer() {
     res.json(tasks);
   });
 
-  app.post("/api/tasks", (req, res) => {
+  app.post("/api/tasks", isAuthenticated, (req, res) => {
     const { zone_id, task_type, scheduled_time, duration_minutes, reasoning } = req.body;
     const stmt = db.prepare('INSERT INTO tasks (zone_id, task_type, scheduled_time, duration_minutes, reasoning) VALUES (?, ?, ?, ?, ?)');
     const info = stmt.run(zone_id, task_type, scheduled_time, duration_minutes, reasoning);
     res.json({ id: info.lastInsertRowid });
   });
 
-  app.patch("/api/tasks/:id/status", (req, res) => {
+  app.patch("/api/tasks/:id/status", isAuthenticated, (req, res) => {
     const { status } = req.body;
     const { id } = req.params;
     const stmt = db.prepare('UPDATE tasks SET status = ? WHERE id = ?');
@@ -123,7 +164,7 @@ async function startServer() {
   });
 
   // --- Chat API (Gemini) ---
-  app.post("/api/chat", async (req, res) => {
+  app.post("/api/chat", isAuthenticated, async (req, res) => {
     try {
       const { message, image, mimeType: clientMimeType } = req.body;
       const apiKey = process.env.GEMINI_API_KEY;
@@ -133,10 +174,15 @@ async function startServer() {
 
       const ai = new GoogleGenAI({ apiKey });
 
+      const farmContext = getFarmContext();
       const systemInstruction = `You are 'Mkulima AI' (AI Farm Assistant) for a 5-acre tomato and onion farm in Malivundo, Pwani, Tanzania.
 You help farmers with questions about crops, soil, pest control, irrigation, and fertigation.
 You speak English and Kiswahili. If the user speaks Kiswahili, respond in Kiswahili.
-Be concise, practical, and helpful. Current Date: ${new Date().toISOString()}`;
+Be concise, practical, and helpful. Use the live farm data below to give specific, accurate answers about zones, tasks, and conditions.
+
+${farmContext}
+
+Current Date: ${new Date().toISOString()}`;
 
       let parts: any[] = [];
       if (image) {
@@ -158,7 +204,7 @@ Be concise, practical, and helpful. Current Date: ${new Date().toISOString()}`;
   });
 
   // --- Crop Analysis API (Gemini Vision) ---
-  app.post("/api/analyze-crop", async (req, res) => {
+  app.post("/api/analyze-crop", isAuthenticated, async (req, res) => {
     try {
       const { zone_id, image } = req.body;
       const apiKey = process.env.GEMINI_API_KEY;
@@ -215,7 +261,7 @@ Be concise and actionable.`;
     }
   });
 
-  app.get("/api/gemini-session", (req, res) => {
+  app.get("/api/gemini-session", isAuthenticated, (req, res) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: "Gemini API key is not configured." });
@@ -225,7 +271,7 @@ Be concise and actionable.`;
 
   // --- Simulation / Logic Trigger ---
   // In a real app, this would be a cron job. Here we trigger it manually or periodically from the frontend.
-  app.post("/api/engine/run-checks", (req, res) => {
+  app.post("/api/engine/run-checks", isAuthenticated, (req, res) => {
     // 1. Fetch active zones
     const zones = db.prepare("SELECT * FROM zones WHERE status = 'Active'").all() as any[];
     const newTasks = [];

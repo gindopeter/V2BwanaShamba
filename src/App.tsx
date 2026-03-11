@@ -10,16 +10,36 @@ import FarmMap from './components/FarmMap';
 import ActionQueue from './components/ActionQueue';
 import YieldCard from './components/YieldCard';
 import { fetchZones, fetchTasks, runEngineChecks, updateTaskStatus, Zone, Task } from './lib/api';
-import { RefreshCw, Plus, Settings, Droplets, Battery, ArrowDownToLine } from 'lucide-react';
+import { RefreshCw, Plus, Settings, Droplets, Battery, ArrowDownToLine, Loader2 } from 'lucide-react';
+
+interface AuthUser {
+  id: string;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  profile_image_url: string | null;
+}
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [zones, setZones] = useState<Zone[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [weather, setWeather] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showNewTask, setShowNewTask] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard');
+
+  useEffect(() => {
+    fetch('/api/auth/user', { credentials: 'include' })
+      .then(res => {
+        if (res.ok) return res.json();
+        return null;
+      })
+      .then(data => setUser(data))
+      .catch(() => setUser(null))
+      .finally(() => setAuthLoading(false));
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
@@ -42,10 +62,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (user) {
       loadData();
     }
-  }, [isAuthenticated]);
+  }, [user]);
 
   const handleTaskAction = async (id: number, action: string) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status: action as any } : t));
@@ -66,12 +86,20 @@ export default function App() {
     }
   };
 
-  if (!isAuthenticated) {
-    return <Login onLogin={() => setIsAuthenticated(true)} />;
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <Loader2 className="w-10 h-10 text-emerald-400 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
   }
 
   return (
-    <Layout currentView={currentView} onNavigate={setCurrentView} onLogout={() => setIsAuthenticated(false)}>
+    <Layout currentView={currentView} onNavigate={setCurrentView} user={user}>
       <div className="space-y-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

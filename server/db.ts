@@ -44,6 +44,23 @@ db.exec(`
     severity TEXT DEFAULT 'Info',
     timestamp TEXT DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE,
+    first_name TEXT,
+    last_name TEXT,
+    profile_image_url TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    sid TEXT PRIMARY KEY,
+    sess TEXT NOT NULL,
+    expire INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_sessions_expire ON sessions(expire);
 `);
 
 // Migration: Add missing columns if they don't exist (for existing databases)
