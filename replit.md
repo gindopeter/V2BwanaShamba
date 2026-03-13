@@ -1,18 +1,42 @@
 # BwanaShamba - Farm Operations Dashboard
 
-A React + Express app for managing farm operations in Tanzania. It tracks crop zones, irrigation, tasks, and provides an AI-powered chatbot and live scouting tool.
+A React + Express app for managing farm operations in Tanzania. It tracks crop zones, irrigation, tasks, and provides an AI-powered multi-agent chatbot and live scouting tool.
 
 ## Architecture
 
 - **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS 4
-- **Backend**: Express.js served via `server.ts` using `tsx`
+- **Backend**: Express.js served via `server.ts` using `tsx` (port 5000)
+- **AI Backend**: Google ADK (Agent Development Kit) multi-agent service via FastAPI/Uvicorn (port 8001)
 - **Database**: SQLite via `better-sqlite3` (file: `farm.db`)
-- **AI**: Google Gemini (`gemini-2.5-flash`) via `@google/genai`
+- **AI**: Google Gemini (`gemini-2.5-flash`) via Google ADK multi-agent framework + `@google/genai` for live voice
 - **Auth**: Admin-managed email/password login with bcryptjs + express-session (SQLite session store)
+
+## ADK Multi-Agent System
+
+The AI chat is powered by Google's Agent Development Kit with a team of specialized agents:
+
+- **farm_supervisor** (Root Agent) — Coordinates all other agents, handles general queries
+- **pest_scout** — Pest identification, crop disease diagnosis, treatment recommendations
+- **irrigation_agent** — Water management, irrigation schedules, fertigation advice
+- **task_planner** — Task scheduling, prioritization, creates new farm tasks
+- **market_agent** — Market prices, harvest timing, selling strategies
+
+Each agent has access to specific tools that query the SQLite database directly. The root agent delegates to specialists based on the question type.
+
+### ADK Files
+
+- `adk_service/main.py` — FastAPI server exposing `/chat` and `/health` endpoints
+- `adk_service/agents/farm_agents.py` — Agent definitions with instructions and tools
+- `adk_service/tools/farm_tools.py` — Database query tools (zones, tasks, logs, pest info, market prices)
+- `adk_service/start.sh` — Startup script that sets environment variables
+
+### ADK Fallback
+
+If the ADK service is unavailable, the Node.js server falls back to direct Gemini API calls with the same farm context.
 
 ## Key Files
 
-- `server.ts` — Express server (port 5000), serves Vite as middleware in dev, handles all API routes including auth
+- `server.ts` — Express server (port 5000), serves Vite as middleware in dev, handles all API routes including auth, proxies chat to ADK service
 - `server/db.ts` — SQLite database setup, schema (zones, tasks, logs, users, sessions), migrations, and seed data
 - `src/App.tsx` — Root component with auth state, navigation, and data loading
 - `src/lib/api.ts` — Frontend API client with TypeScript interfaces
@@ -44,7 +68,7 @@ A React + Express app for managing farm operations in Tanzania. It tracks crop z
 - `POST /api/conversations` — Create a new conversation
 - `DELETE /api/conversations/:id` — Delete a conversation
 - `GET /api/conversations/:id/messages` — Get messages for a conversation
-- `POST /api/chat` — Chat with Gemini AI (includes live farm data context)
+- `POST /api/chat` — Chat via ADK multi-agent service (falls back to direct Gemini)
 - `POST /api/analyze-crop` — Analyze crop image with Gemini Vision
 - `GET /api/gemini-session` — Get API key for live voice sessions
 - `POST /api/engine/run-checks` — Run irrigation scheduling engine
@@ -61,8 +85,11 @@ A React + Express app for managing farm operations in Tanzania. It tracks crop z
 ## Running
 
 ```bash
-npm run dev   # starts tsx server.ts on port 5000
+npm run dev   # starts Node.js server on port 5000
+bash adk_service/start.sh  # starts ADK agent service on port 8001
 ```
+
+Both services run as Replit workflows.
 
 ## Design
 
@@ -77,6 +104,7 @@ npm run dev   # starts tsx server.ts on port 5000
 
 - **Auth** — Admin-managed email/password login (no self-registration)
 - **Dashboard** — Zone cards, task list, weather widget, yield/water stats
+- **AI Assistant** — Multi-agent ADK-powered chat with pest scout, irrigation, task planner, and market specialists
 - **Live Scout** — Camera/image/video upload + AI crop analysis + live voice mode
 - **Farm Map** — Visual map of farm zones
 - **Chatbot** — AI assistant with access to all live farm data (zones, tasks, logs)
@@ -86,6 +114,7 @@ npm run dev   # starts tsx server.ts on port 5000
 
 - `GEMINI_API_KEY` — Required for AI chat, crop analysis, and live voice features
 - `SESSION_SECRET` — Optional (falls back to built-in default for dev)
+- `ADK_SERVICE_URL` — Optional (defaults to `http://localhost:8001`)
 
 ## Planned Features (Not Yet Implemented)
 

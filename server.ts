@@ -342,20 +342,36 @@ async function startServer() {
     res.json(messages);
   });
 
-  // --- Chat API (Gemini) with conversation history ---
-  app.post("/api/chat", isAuthenticated, async (req, res) => {
+  // --- Chat API via ADK Multi-Agent Service (with direct Gemini fallback) ---
+  const ADK_URL = process.env.ADK_SERVICE_URL || 'http://localhost:8001';
+  const ADK_TOKEN = process.env.ADK_INTERNAL_TOKEN || 'bwanashamba-internal-service-token';
+
+  async function chatViaADK(message: string, userId: string, sessionId: string | null, image?: string, mimeType?: string): Promise<{ reply: string; adkSessionId: string; agentName: string }> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 55000);
     try {
-      const { message, image, mimeType: clientMimeType, conversationId } = req.body;
-      const userId = (req.session as any).userId;
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({ reply: "Gemini API key is not configured. Please add GEMINI_API_KEY to your secrets." });
-      }
+      const body: any = { message, user_id: `user_${userId}`, session_id: sessionId };
+      if (image) { body.image = image; body.mime_type = mimeType || 'image/jpeg'; }
+      const resp = await fetch(`${ADK_URL}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ADK_TOKEN}` },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      if (!resp.ok) throw new Error(`ADK returned ${resp.status}`);
+      const data = await resp.json() as any;
+      return { reply: data.reply, adkSessionId: data.session_id, agentName: data.agent_name };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
 
-      const ai = new GoogleGenAI({ apiKey });
-
-      const farmContext = getFarmContext();
-      const systemInstruction = `You are 'BwanaShamba' (AI Farm Assistant) for a 5-acre tomato and onion farm in Malivundo, Pwani, Tanzania.
+  async function chatViaGeminiDirect(message: string, contents: any[], image?: string, mimeType?: string): Promise<string> {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("Gemini API key not configured");
+    const ai = new GoogleGenAI({ apiKey });
+    const farmContext = getFarmContext();
+    const systemInstruction = `You are 'BwanaShamba' (AI Farm Assistant) for a 5-acre tomato and onion farm in Malivundo, Pwani, Tanzania.
 You help farmers with questions about crops, soil, pest control, irrigation, and fertigation.
 You are fluent in both English and Kiswahili. IMPORTANT: Always respond in the same language the user is currently using. If the user writes in Kiswahili, respond entirely in Kiswahili. If the user writes in English, respond in English. If the user switches languages mid-conversation, switch with them immediately.
 Be concise, practical, and helpful. Use the live farm data below to give specific, accurate answers about zones, tasks, and conditions.
@@ -363,6 +379,26 @@ Be concise, practical, and helpful. Use the live farm data below to give specifi
 ${farmContext}
 
 Current Date: ${new Date().toISOString()}`;
+
+    if (image) {
+      const lastContent = contents[contents.length - 1];
+      if (lastContent) {
+        lastContent.parts.unshift({ inlineData: { mimeType: mimeType || "image/jpeg", data: image } });
+      }
+    }
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents,
+      config: { systemInstruction }
+    });
+    return response.text || "I could not generate a response.";
+  }
+
+  app.post("/api/chat", isAuthenticated, async (req, res) => {
+    try {
+      const { message, image, mimeType: clientMimeType, conversationId } = req.body;
+      const userId = (req.session as any).userId;
 
       let convId = conversationId;
       if (convId) {
@@ -378,39 +414,47 @@ Current Date: ${new Date().toISOString()}`;
       const hasImage = !!image;
       db.prepare('INSERT INTO chat_messages (conversation_id, role, text, image_url) VALUES (?, ?, ?, ?)').run(convId, 'user', message || 'Analyze this image.', hasImage ? 'attached' : null);
 
-      const history = db.prepare(
-        'SELECT role, text FROM chat_messages WHERE conversation_id = ? AND role IN (\'user\', \'ai\') ORDER BY created_at ASC'
-      ).all(convId) as { role: string; text: string }[];
-
-      const contents = history.map((msg: any) => ({
-        role: msg.role === 'ai' ? 'model' : 'user',
-        parts: [{ text: msg.text }]
-      }));
-
-      if (image) {
-        const lastContent = contents[contents.length - 1];
-        if (lastContent) {
-          lastContent.parts.unshift({ inlineData: { mimeType: clientMimeType || "image/jpeg", data: image } } as any);
-        }
+      const adkSessionKey = `adk_session_${convId}`;
+      let adkSessionId: string | null = null;
+      const existing = db.prepare('SELECT text FROM chat_messages WHERE conversation_id = ? AND role = \'system\' AND text LIKE \'adk_session:%\' ORDER BY created_at DESC LIMIT 1').get(convId) as any;
+      if (existing) {
+        adkSessionId = existing.text.replace('adk_session:', '');
       }
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents,
-        config: { systemInstruction }
-      });
+      let reply: string;
+      let agentName = 'gemini-direct';
 
-      const reply = response.text || "I could not generate a response.";
+      try {
+        const adkResult = await chatViaADK(message || 'Analyze this image.', String(userId), adkSessionId, image, clientMimeType);
+        reply = adkResult.reply;
+        agentName = adkResult.agentName;
+
+        if (!adkSessionId && adkResult.adkSessionId) {
+          db.prepare('INSERT INTO chat_messages (conversation_id, role, text) VALUES (?, ?, ?)').run(convId, 'system', `adk_session:${adkResult.adkSessionId}`);
+        }
+        console.log(`[chat] ADK agent '${agentName}' handled request for conversation ${convId}`);
+      } catch (adkErr: any) {
+        console.log(`[chat] ADK unavailable (${adkErr.message}), falling back to direct Gemini`);
+        const history = db.prepare(
+          'SELECT role, text FROM chat_messages WHERE conversation_id = ? AND role IN (\'user\', \'ai\') ORDER BY created_at ASC'
+        ).all(convId) as { role: string; text: string }[];
+        const contents = history.map((msg: any) => ({
+          role: msg.role === 'ai' ? 'model' : 'user',
+          parts: [{ text: msg.text }]
+        }));
+        reply = await chatViaGeminiDirect(message, contents, image, clientMimeType);
+      }
 
       db.prepare('INSERT INTO chat_messages (conversation_id, role, text) VALUES (?, ?, ?)').run(convId, 'ai', reply);
       db.prepare('UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(convId);
 
+      const history = db.prepare('SELECT id FROM chat_messages WHERE conversation_id = ? AND role IN (\'user\', \'ai\')').all(convId);
       if (history.length <= 2) {
         const title = (message || 'Image analysis').substring(0, 80);
         db.prepare('UPDATE conversations SET title = ? WHERE id = ?').run(title, convId);
       }
 
-      res.json({ reply, conversationId: convId });
+      res.json({ reply, conversationId: convId, agent: agentName });
     } catch (err: any) {
       console.error("Chat API Error:", err.message);
       res.status(500).json({ reply: "Sorry, I encountered an error processing your request." });
