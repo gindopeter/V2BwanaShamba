@@ -82,3 +82,10 @@ npm run dev   # starts tsx server.ts on port 5000
 
 - `GEMINI_API_KEY` — Required for AI chat, crop analysis, and live voice features
 - `SESSION_SECRET` — Optional (falls back to built-in default for dev)
+
+## Planned Features (Not Yet Implemented)
+
+- **WhatsApp Notifications (Twilio)** — Irrigation & task alerts via WhatsApp. Requires Twilio account setup:
+  - Needs secrets: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` (sandbox number)
+  - User's phone number to be stored in settings
+  - Alert types: irrigation start/stop, pending task reminders, weather warnings
