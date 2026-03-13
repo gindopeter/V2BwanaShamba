@@ -76,6 +76,7 @@ const isAdmin: RequestHandler = (req, res, next) => {
 };
 
 async function startServer() {
+  console.log(`[startup] NODE_ENV=${process.env.NODE_ENV}, PORT=${process.env.PORT || 5000}, CWD=${process.cwd()}`);
   const app = express();
   const port = process.env.PORT || 5000;
 
@@ -608,4 +609,8 @@ Be concise and actionable.`;
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error('[startup] FATAL ERROR:', err.message);
+  console.error(err.stack);
+  process.exit(1);
+});
