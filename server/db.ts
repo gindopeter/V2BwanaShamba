@@ -114,7 +114,7 @@ async function createSchema() {
     CREATE TABLE IF NOT EXISTS zones (
       id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
       name TEXT NOT NULL,
-      crop_type TEXT ${isPostgres ? '' : "CHECK(crop_type IN ('Tomato', 'Onion'))"} NOT NULL,
+      crop_type TEXT NOT NULL,
       planting_date TEXT NOT NULL,
       area_size REAL DEFAULT 1.0,
       status TEXT DEFAULT 'Active',
@@ -237,6 +237,28 @@ async function runMigrations() {
       sqliteDb.exec("ALTER TABLE zones ADD COLUMN irrigation_status TEXT DEFAULT 'Off' CHECK(irrigation_status IN ('Off', 'Running'))");
     }
 
+    const checkSql = sqliteDb.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='zones'").get() as any;
+    if (checkSql?.sql && checkSql.sql.includes("CHECK(crop_type IN")) {
+      console.log('[DB] Migrating zones table to remove crop_type CHECK constraint...');
+      sqliteDb.exec("ALTER TABLE zones RENAME TO zones_old");
+      sqliteDb.exec(`
+        CREATE TABLE zones (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          crop_type TEXT NOT NULL,
+          planting_date TEXT NOT NULL,
+          area_size REAL DEFAULT 1.0,
+          status TEXT DEFAULT 'Active',
+          expected_yield_kg REAL DEFAULT 0,
+          actual_yield_kg REAL DEFAULT 0,
+          irrigation_status TEXT DEFAULT 'Off' CHECK(irrigation_status IN ('Off', 'Running'))
+        )
+      `);
+      sqliteDb.exec("INSERT INTO zones SELECT * FROM zones_old");
+      sqliteDb.exec("DROP TABLE zones_old");
+      console.log('[DB] Zones table migrated successfully.');
+    }
+
     const usersTableInfo = sqliteDb.prepare("PRAGMA table_info(users)").all() as any[];
     const usersColumns = usersTableInfo.map((c: any) => c.name);
     if (usersColumns.length > 0 && !usersColumns.includes('password_hash')) {
@@ -270,9 +292,9 @@ async function seedData() {
     const hash = bcrypt.hashSync('admin123', 10);
     await dbRun(
       'INSERT INTO users (email, password_hash, first_name, last_name, role) VALUES (?, ?, ?, ?, ?)',
-      'admin@farm.co.tz', hash, 'Farm', 'Admin', 'admin'
+      'admin@bwanashamba.com', hash, 'Farm', 'Admin', 'admin'
     );
-    console.log('[DB] Seeded default admin: admin@farm.co.tz / admin123');
+    console.log('[DB] Seeded default admin: admin@bwanashamba.com / admin123');
   }
 
   const zonesCount = await dbGet('SELECT count(*) as count FROM zones');

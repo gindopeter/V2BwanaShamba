@@ -115,7 +115,7 @@ export default function Login({ onLogin }: LoginProps) {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="admin@farm.co.tz"
+            placeholder="admin@bwanashamba.com"
             autoComplete="email"
             className="w-full px-4 py-3 bg-white border-2 border-[#002c11]/10 rounded-lg text-[#002c11] text-sm font-medium transition-all duration-300 focus:border-[#035925] focus:shadow-[0_0_0_3px_rgba(3,89,37,0.1)] outline-none placeholder-[#002c11]/30"
           />

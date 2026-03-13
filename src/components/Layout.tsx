@@ -23,7 +23,7 @@ export default function Layout({ children, currentView, onNavigate, user, onLogo
   const navItems = [
     { icon: <LayoutDashboard />, label: 'Overview', view: 'dashboard' },
     { icon: <MessageSquare />, label: 'AI Assistant', view: 'assistant' },
-    { icon: <MapIcon />, label: 'Farm Map', view: 'map' },
+    { icon: <MapIcon />, label: 'The Farm', view: 'map' },
     { icon: <Settings />, label: 'Settings', view: 'settings' },
   ];
 

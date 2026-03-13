@@ -82,8 +82,23 @@ export default function ZoneModal({ zone, onClose, onSave, onDelete }: ZoneModal
           <div>
             <label className={labelClass}>Crop Type</label>
             <select value={cropType} onChange={e => setCropType(e.target.value)} className={inputClass} disabled={saving}>
-              <option value="Tomato">🍅 Tomato</option>
-              <option value="Onion">🧅 Onion</option>
+              <optgroup label="Horticulture">
+                <option value="Tomato">🍅 Tomato</option>
+                <option value="Onion">🧅 Onion</option>
+                <option value="Pepper">🌶️ Pepper</option>
+                <option value="Cabbage">🥬 Cabbage</option>
+                <option value="Spinach">🥬 Spinach</option>
+                <option value="Cucumber">🥒 Cucumber</option>
+                <option value="Watermelon">🍉 Watermelon</option>
+                <option value="Eggplant">🍆 Eggplant</option>
+                <option value="Carrot">🥕 Carrot</option>
+                <option value="Lettuce">🥗 Lettuce</option>
+                <option value="Okra">🌿 Okra</option>
+                <option value="Green Bean">🫘 Green Bean</option>
+              </optgroup>
+              <optgroup label="Cereal">
+                <option value="Maize">🌽 Maize</option>
+              </optgroup>
             </select>
           </div>
 

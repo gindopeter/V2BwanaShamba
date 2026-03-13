@@ -146,7 +146,7 @@ export default function App() {
             <div>
               <h2 className="text-lg font-black text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
                 {currentView === 'dashboard' && 'Farm Overview'}
-                {currentView === 'map' && 'Farm Map'}
+                {currentView === 'map' && 'The Farm'}
                 {currentView === 'settings' && 'Settings'}
                 {currentView === 'tasks-detail' && 'Pending Tasks'}
                 {currentView === 'zones-detail' && 'Active Zones'}
@@ -277,7 +277,7 @@ export default function App() {
         )}
 
         {currentView === 'assistant' && <LiveScout />}
-        {currentView === 'map' && <FarmMap />}
+        {currentView === 'map' && <FarmMap zones={zones} onUpdate={loadData} onEdit={z => setEditingZone(z)} onAdd={() => setShowZoneModal(true)} />}
         {currentView === 'settings' && <SettingsPage user={user} onUserUpdate={(u) => setUser(u)} />}
 
         {showNewTask && (

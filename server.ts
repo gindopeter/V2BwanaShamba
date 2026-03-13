@@ -22,7 +22,8 @@ async function getFarmContext(): Promise<string> {
     const plantingDate = new Date(z.planting_date);
     const diffTime = Math.abs(today.getTime() - plantingDate.getTime());
     const growthDay = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    const maxDays = z.crop_type === 'Tomato' ? 120 : 150;
+    const cropDays: Record<string, number> = { 'Tomato': 120, 'Onion': 150, 'Pepper': 130, 'Cabbage': 100, 'Spinach': 50, 'Cucumber': 70, 'Watermelon': 90, 'Eggplant': 130, 'Carrot': 90, 'Lettuce': 65, 'Okra': 60, 'Green Bean': 60, 'Maize': 120 };
+    const maxDays = cropDays[z.crop_type] || 120;
     const stage = growthDay <= maxDays * 0.25 ? 'Seedling' : growthDay <= maxDays * 0.5 ? 'Vegetative' : growthDay <= maxDays * 0.75 ? 'Flowering' : 'Harvest';
     return `- ${z.name}: ${z.crop_type}, ${z.area_size} acres, planted ${z.planting_date}, day ${growthDay}/${maxDays} (${stage} stage), irrigation: ${z.irrigation_status}, status: ${z.status}, expected yield: ${z.expected_yield_kg}kg, actual yield: ${z.actual_yield_kg}kg`;
   }).join('\n');
@@ -297,7 +298,8 @@ async function startServer() {
       const diffTime = Math.abs(today.getTime() - plantingDate.getTime());
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-      const harvestDays = zone.crop_type === 'Tomato' ? 120 : 150;
+      const cropDaysMap: Record<string, number> = { 'Tomato': 120, 'Onion': 150, 'Pepper': 130, 'Cabbage': 100, 'Spinach': 50, 'Cucumber': 70, 'Watermelon': 90, 'Eggplant': 130, 'Carrot': 90, 'Lettuce': 65, 'Okra': 60, 'Green Bean': 60, 'Maize': 120 };
+      const harvestDays = cropDaysMap[zone.crop_type] || 120;
       const harvestDate = new Date(plantingDate);
       harvestDate.setDate(harvestDate.getDate() + harvestDays);
 
@@ -306,7 +308,8 @@ async function startServer() {
         zone.id
       );
 
-      let baseYield = zone.crop_type === 'Tomato' ? 30000 : 15000;
+      const yieldMap: Record<string, number> = { 'Tomato': 30000, 'Onion': 15000, 'Pepper': 20000, 'Cabbage': 25000, 'Spinach': 10000, 'Cucumber': 20000, 'Watermelon': 35000, 'Eggplant': 25000, 'Carrot': 18000, 'Lettuce': 12000, 'Okra': 10000, 'Green Bean': 8000, 'Maize': 6000 };
+      let baseYield = yieldMap[zone.crop_type] || 15000;
       let predicted = zone.area_size * baseYield;
       if (!zone.expected_yield_kg) {
         predicted = predicted * (0.9 + Math.random() * 0.2);
@@ -492,8 +495,8 @@ async function startServer() {
     if (!apiKey) throw new Error("Gemini API key not configured");
     const ai = new GoogleGenAI({ apiKey });
     const farmContext = await getFarmContext();
-    const systemInstruction = `You are 'BwanaShamba' (AI Farm Assistant) for a 5-acre tomato and onion farm in Malivundo, Pwani, Tanzania.
-You help farmers with questions about crops, soil, pest control, irrigation, and fertigation.
+    const systemInstruction = `You are 'BwanaShamba' (AI Farm Assistant) for a 5-acre farm in Malivundo, Pwani, Tanzania growing horticulture crops (tomatoes, onions, peppers, cabbage, spinach, cucumbers, watermelon, eggplant, carrots, lettuce, okra, green beans) and maize.
+You help farmers with questions about all these crops — soil, pest control, irrigation, fertigation, harvest timing, and market prices.
 You are fluent in both English and Kiswahili. IMPORTANT: Always respond in the same language the user is currently using. If the user writes in Kiswahili, respond entirely in Kiswahili. If the user writes in English, respond in English. If the user switches languages mid-conversation, switch with them immediately.
 Be concise, practical, and helpful. Use the live farm data below to give specific, accurate answers about zones, tasks, and conditions.
 
@@ -701,7 +704,7 @@ Area: ${zone.area_size} acres
 
 Analyze this image and provide:
 1. **Health Assessment** - Overall plant health (Healthy/Warning/Critical)
-2. **Pest Detection** - Check for Tuta Absoluta (tomato) or Thrips (onion) and other common pests
+2. **Pest Detection** - Check for common pests relevant to this crop (e.g., Tuta Absoluta for tomatoes, Thrips for onions, Fall Armyworm for maize, aphids, whitefly, etc.)
 3. **Disease Signs** - Any visible diseases (blight, fungal infection, etc.)
 4. **Growth Stage Confirmation** - Does the visual match the expected growth day?
 5. **Recommendations** - Immediate actions needed
@@ -812,20 +815,22 @@ Be concise and actionable.`;
       let duration = 60;
       let reasoning = "";
 
-      if (zone.crop_type === 'Tomato') {
-        if (growthDay > 40 && growthDay < 90) {
-          duration = 90;
-          reasoning = "Flowering Stage Boost";
-        }
+      const cropMaxDays: Record<string, number> = { 'Tomato': 120, 'Onion': 150, 'Pepper': 130, 'Cabbage': 100, 'Spinach': 50, 'Cucumber': 70, 'Watermelon': 90, 'Eggplant': 130, 'Carrot': 90, 'Lettuce': 65, 'Okra': 60, 'Green Bean': 60, 'Maize': 120 };
+      const maxDays = cropMaxDays[zone.crop_type] || 120;
+      const floweringStart = Math.round(maxDays * 0.33);
+      const floweringEnd = Math.round(maxDays * 0.75);
+
+      if (growthDay > floweringStart && growthDay < floweringEnd) {
+        duration = 90;
+        reasoning = "Flowering/Fruiting Stage Boost";
       }
 
-      if (zone.crop_type === 'Onion') {
-        if (growthDay > 100) {
-          reasoning = "Dry-out period active. No irrigation.";
-          irrigationNeeded = false;
-        } else {
-          irrigationNeeded = true;
-        }
+      if (zone.crop_type === 'Onion' && growthDay > 100) {
+        reasoning = "Dry-out period active. No irrigation.";
+        irrigationNeeded = false;
+      } else if (growthDay > maxDays) {
+        reasoning = "Past harvest date. Review zone status.";
+        irrigationNeeded = false;
       } else {
         irrigationNeeded = true;
       }

@@ -1,7 +1,7 @@
 export interface Zone {
   id: number;
   name: string;
-  crop_type: 'Tomato' | 'Onion';
+  crop_type: string;
   planting_date: string;
   area_size: number;
   status: string;

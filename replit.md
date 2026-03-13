@@ -8,7 +8,7 @@ A React + Express app for managing farm operations in Tanzania. It tracks crop z
 - **Backend**: Express.js served via `server.ts` using `tsx` (port 5000)
 - **AI Backend**: Google ADK (Agent Development Kit) multi-agent service via FastAPI/Uvicorn (port 8001)
 - **Database**: Dual-mode — PostgreSQL (Cloud SQL) in production when `DATABASE_URL` is set, SQLite (`farm.db`) for local development
-- **AI**: Google Gemini (`gemini-2.5-flash`) via Google ADK multi-agent framework + `@google/genai` for live voice
+- **AI**: Google Gemini (`gemini-2.5-flash`) via Google ADK multi-agent framework + `@google/genai` for live voice. Covers all horticulture crops (tomato, onion, pepper, cabbage, spinach, cucumber, watermelon, eggplant, carrot, lettuce, okra, green bean) and maize.
 - **Weather**: Open-Meteo API (free, no key) — real 7-day forecast for Malivundo (-7.1, 38.7), used by both dashboard and AI agents for fertigation timing
 - **Auth**: Admin-managed email/password login with bcryptjs + express-session (PostgreSQL via `connect-pg-simple` in prod, SQLite in dev)
 
@@ -83,7 +83,7 @@ If the ADK service is unavailable, the Node.js server falls back to direct Gemin
 ## Auth System
 
 - Admin-managed accounts (no self-registration)
-- Default admin: `admin@farm.co.tz` / `admin123` (seeded on first run)
+- Default admin: `admin@bwanashamba.com` / `admin123` (seeded on first run)
 - Passwords hashed with bcryptjs (10 rounds)
 - Sessions stored in PostgreSQL (connect-pg-simple) in production, SQLite in development
 - Admin users can create/list/delete other users via `/api/auth/users`
@@ -114,7 +114,7 @@ Both services run as Replit workflows.
 - **Zone Management** — Add, edit, and delete zones from the Active Zones detail view
 - **AI Assistant** — Multi-agent ADK-powered chat with SSE streaming responses, pest scout, irrigation, task planner, and market specialists
 - **Live Scout** — Camera/image/video upload + AI crop analysis + live voice mode
-- **Farm Map** — Visual map of farm zones
+- **The Farm** — Farm overview with allocation bar, active/inactive acreage stats, and full zone management (add/edit/delete)
 - **Chatbot** — AI assistant with access to all live farm data (zones, tasks, logs)
 - **Task Engine** — Auto-generates irrigation tasks based on crop stage and mock weather
 

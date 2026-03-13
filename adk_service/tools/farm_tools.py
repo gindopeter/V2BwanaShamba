@@ -15,7 +15,7 @@ def _get_db():
 
 def get_all_zones() -> dict:
     """Get all farm zones with their current status, crop type, irrigation status, and yield data.
-    Returns a dictionary with zone information for the 5-acre tomato and onion farm."""
+    Returns a dictionary with zone information for the 5-acre mixed horticulture and maize farm."""
     try:
         conn = _get_db()
         rows = conn.execute("SELECT * FROM zones").fetchall()
@@ -192,15 +192,15 @@ def get_farm_summary() -> dict:
 
 
 def get_pest_info(pest_name: str) -> dict:
-    """Get information about a specific pest common to tomato and onion farming in Tanzania.
+    """Get information about a specific pest common to horticulture and maize farming in Tanzania.
 
     Args:
-        pest_name: Name of the pest to look up (e.g. 'Tuta Absoluta', 'Thrips', 'Whitefly').
+        pest_name: Name of the pest to look up (e.g. 'Tuta Absoluta', 'Thrips', 'Whitefly', 'Fall Armyworm', 'Stem Borer').
     """
     pest_db = {
         "tuta absoluta": {
             "name": "Tuta Absoluta (Tomato Leaf Miner)",
-            "affects": "Tomatoes",
+            "affects": "Tomatoes, Eggplant, Peppers",
             "symptoms": "Irregular mines on leaves, fruit boring, wilting foliage",
             "treatment": "Pheromone traps, Bacillus thuringiensis (Bt), neem-based pesticides, remove affected leaves",
             "prevention": "Crop rotation, resistant varieties, yellow sticky traps, proper spacing",
@@ -208,7 +208,7 @@ def get_pest_info(pest_name: str) -> dict:
         },
         "thrips": {
             "name": "Thrips (Onion Thrips - Thrips tabaci)",
-            "affects": "Onions, Tomatoes",
+            "affects": "Onions, Tomatoes, Peppers, Cabbage",
             "symptoms": "Silver/white streaks on leaves, curling, stunted growth",
             "treatment": "Spinosad, neem oil, insecticidal soap, overhead irrigation to wash off",
             "prevention": "Remove crop residues, avoid planting near garlic/leek fields, blue sticky traps",
@@ -216,27 +216,91 @@ def get_pest_info(pest_name: str) -> dict:
         },
         "whitefly": {
             "name": "Whitefly (Bemisia tabaci)",
-            "affects": "Tomatoes",
+            "affects": "Tomatoes, Peppers, Eggplant, Cucumbers, Watermelon",
             "symptoms": "Yellowing leaves, honeydew on leaves, sooty mold, virus transmission (TYLCV)",
             "treatment": "Yellow sticky traps, neem oil, insecticidal soap, remove heavily infested plants",
             "prevention": "Reflective mulches, resistant varieties, biological control with Encarsia formosa",
             "severity": "High - also transmits Tomato Yellow Leaf Curl Virus"
         },
+        "fall armyworm": {
+            "name": "Fall Armyworm (Spodoptera frugiperda)",
+            "affects": "Maize (primary), Tomatoes, Onions, Cabbage, Peppers",
+            "symptoms": "Ragged holes in leaves, frass on plants, larvae visible at night, windowing on maize leaves, bore into maize cobs",
+            "treatment": "Bt spray, hand picking, pyrethroid sprays as last resort, biological control with Trichogramma",
+            "prevention": "Early planting, intercropping with repellent plants (desmodium push-pull for maize), pheromone traps, destroy crop residues",
+            "severity": "Very High for maize - can destroy entire field if untreated"
+        },
         "armyworm": {
             "name": "Fall Armyworm (Spodoptera frugiperda)",
-            "affects": "Tomatoes, Onions",
+            "affects": "Maize (primary), Tomatoes, Onions, Cabbage",
             "symptoms": "Ragged holes in leaves, frass on plants, larvae visible at night",
             "treatment": "Bt spray, hand picking, pyrethroid sprays as last resort",
             "prevention": "Early planting, intercropping with repellent plants, pheromone traps",
-            "severity": "Medium-High"
+            "severity": "Very High for maize"
+        },
+        "stem borer": {
+            "name": "Maize Stem Borer (Busseola fusca / Chilo partellus)",
+            "affects": "Maize",
+            "symptoms": "Dead heart in young plants, stem tunneling, broken tassels, poor grain fill",
+            "treatment": "Apply granular insecticide in leaf whorl, remove and destroy infested stems",
+            "prevention": "Push-pull technology (Desmodium + Napier grass), early planting, crop rotation, destroy stalks after harvest",
+            "severity": "High - can reduce maize yield by 30-50%"
+        },
+        "maize streak virus": {
+            "name": "Maize Streak Virus (MSV)",
+            "affects": "Maize",
+            "symptoms": "Yellow streaks along leaf veins, stunted growth, poor cob development",
+            "treatment": "No cure - remove infected plants, control leafhopper vectors with insecticides",
+            "prevention": "Plant MSV-resistant varieties, control leafhoppers, avoid late planting",
+            "severity": "High - can cause 100% loss in susceptible varieties"
         },
         "aphids": {
             "name": "Aphids (Myzus persicae / Aphis gossypii)",
-            "affects": "Tomatoes, Onions",
+            "affects": "Tomatoes, Onions, Peppers, Cabbage, Lettuce, Cucumbers, Okra",
             "symptoms": "Curled leaves, sticky honeydew, stunted growth, virus transmission",
             "treatment": "Strong water spray, neem oil, ladybug release, insecticidal soap",
             "prevention": "Companion planting with marigolds, avoid excessive nitrogen fertilizer",
             "severity": "Medium"
+        },
+        "diamondback moth": {
+            "name": "Diamondback Moth (Plutella xylostella)",
+            "affects": "Cabbage, Spinach, other brassicas",
+            "symptoms": "Small holes in leaves, 'windowpane' damage, small green caterpillars on undersides",
+            "treatment": "Bt spray, spinosad, neem oil, hand picking",
+            "prevention": "Intercrop with tomatoes or onions, use pheromone traps, remove crop residues",
+            "severity": "High for cabbage"
+        },
+        "fruit fly": {
+            "name": "Fruit Fly (Bactrocera spp.)",
+            "affects": "Cucumbers, Watermelon, Tomatoes, Peppers",
+            "symptoms": "Puncture marks on fruit, larvae inside fruit, premature fruit drop",
+            "treatment": "Protein bait traps, harvest early, destroy fallen fruit",
+            "prevention": "Pheromone traps, sanitation, early harvest at breaker stage",
+            "severity": "Medium-High"
+        },
+        "powdery mildew": {
+            "name": "Powdery Mildew",
+            "affects": "Cucumbers, Watermelon, Okra, Peppers, Eggplant",
+            "symptoms": "White powdery spots on leaves and stems, yellowing, leaf drop",
+            "treatment": "Sulfur-based fungicide, potassium bicarbonate, neem oil, remove affected leaves",
+            "prevention": "Good air circulation, avoid overhead irrigation, resistant varieties, proper spacing",
+            "severity": "Medium"
+        },
+        "striga": {
+            "name": "Striga (Witchweed - Striga hermonthica)",
+            "affects": "Maize",
+            "symptoms": "Stunted growth, wilting despite adequate water, purple/pink parasitic flowers near maize base",
+            "treatment": "Hand pulling before flowering, imazapyr-resistant (IR) maize varieties, push-pull technology",
+            "prevention": "Crop rotation with legumes, use Striga-resistant varieties, improve soil fertility",
+            "severity": "Very High in infested fields - can cause total crop failure"
+        },
+        "nematodes": {
+            "name": "Root-knot Nematodes (Meloidogyne spp.)",
+            "affects": "Tomatoes, Carrots, Lettuce, Okra, Cucumbers, Eggplant",
+            "symptoms": "Stunted growth, wilting, root galls/knots, yellowing leaves",
+            "treatment": "Soil solarization, neem cake, crop rotation with non-host crops",
+            "prevention": "Resistant varieties, rotate with maize/onion, organic matter amendments",
+            "severity": "Medium-High"
         }
     }
     key = pest_name.lower().strip()
@@ -244,13 +308,13 @@ def get_pest_info(pest_name: str) -> dict:
         if k in key or key in k:
             return v
     return {
-        "message": f"No specific data for '{pest_name}'. Common pests in Malivundo tomato/onion farms: Tuta Absoluta, Thrips, Whitefly, Armyworm, Aphids. Ask about any of these for detailed info.",
+        "message": f"No specific data for '{pest_name}'. Common pests on this farm include: Tuta Absoluta (tomatoes), Thrips (onions), Fall Armyworm (maize), Diamondback Moth (cabbage), Aphids, Whitefly, Fruit Fly, Powdery Mildew, Stem Borer, Striga. Ask about any of these.",
         "available_pests": list(pest_db.keys())
     }
 
 
 def get_market_prices() -> dict:
-    """Get current estimated market prices for tomatoes and onions in Tanzania (Dar es Salaam markets)."""
+    """Get current estimated market prices for horticulture crops and maize in Tanzania (Dar es Salaam markets)."""
     return {
         "date": datetime.now().strftime("%Y-%m-%d"),
         "market": "Kariakoo / Dar es Salaam wholesale",
@@ -266,9 +330,65 @@ def get_market_prices() -> dict:
                 "price_per_bag_tzs": "80,000 - 150,000 TZS (per 50kg bag)",
                 "trend": "Rising - imports from India reduced, local demand high",
                 "best_selling_period": "Year-round, peak June-August"
+            },
+            "peppers": {
+                "price_per_kg_tzs": "3,000 - 6,000 TZS",
+                "trend": "High demand, good margins",
+                "best_selling_period": "Year-round, peak during dry season"
+            },
+            "cabbage": {
+                "price_per_kg_tzs": "500 - 1,500 TZS",
+                "trend": "Seasonal, lower during peak harvest",
+                "best_selling_period": "Dry season (June-October)"
+            },
+            "spinach": {
+                "price_per_kg_tzs": "800 - 1,500 TZS",
+                "trend": "Consistent demand",
+                "best_selling_period": "Year-round"
+            },
+            "cucumbers": {
+                "price_per_kg_tzs": "1,000 - 2,500 TZS",
+                "trend": "Growing demand in urban areas",
+                "best_selling_period": "Year-round"
+            },
+            "watermelon": {
+                "price_per_kg_tzs": "500 - 1,500 TZS",
+                "trend": "High demand in hot season",
+                "best_selling_period": "October - March (hot season)"
+            },
+            "eggplant": {
+                "price_per_kg_tzs": "1,500 - 3,000 TZS",
+                "trend": "Stable demand",
+                "best_selling_period": "Year-round"
+            },
+            "carrots": {
+                "price_per_kg_tzs": "1,500 - 3,000 TZS",
+                "trend": "Growing demand, good urban market",
+                "best_selling_period": "Year-round"
+            },
+            "lettuce": {
+                "price_per_kg_tzs": "2,000 - 4,000 TZS",
+                "trend": "Premium prices in urban markets, hotels, restaurants",
+                "best_selling_period": "Year-round"
+            },
+            "okra": {
+                "price_per_kg_tzs": "1,500 - 3,000 TZS",
+                "trend": "Steady local demand",
+                "best_selling_period": "Year-round"
+            },
+            "green_beans": {
+                "price_per_kg_tzs": "2,000 - 4,000 TZS",
+                "trend": "Export potential to Europe, strong local demand",
+                "best_selling_period": "Year-round, export peak Nov-May"
+            },
+            "maize": {
+                "price_per_kg_tzs": "600 - 1,200 TZS",
+                "price_per_bag_tzs": "60,000 - 120,000 TZS (per 100kg bag)",
+                "trend": "Staple crop, prices rise during lean season",
+                "best_selling_period": "February - May (lean season, highest prices)"
             }
         },
-        "note": "Prices fluctuate. Check Kariakoo market or contact TAHA (Tanzania Horticultural Association) for daily rates."
+        "note": "Prices fluctuate. Check Kariakoo market or contact TAHA (Tanzania Horticultural Association) for daily rates. For maize, check NFRA (National Food Reserve Agency) reference prices."
     }
 
 
@@ -276,7 +396,7 @@ def get_harvest_recommendation(crop_type: str) -> dict:
     """Get harvest timing recommendations for a specific crop based on Malivundo conditions.
 
     Args:
-        crop_type: The crop type - 'tomato' or 'onion'.
+        crop_type: The crop type (e.g. 'tomato', 'onion', 'maize', 'pepper', 'cabbage', etc.).
     """
     recommendations = {
         "tomato": {
@@ -312,13 +432,104 @@ def get_harvest_recommendation(crop_type: str) -> dict:
                 "Can store 2-4 months if properly cured"
             ],
             "malivundo_tips": "Pwani humidity can cause rot during curing. Ensure good airflow and avoid curing during rain."
+        },
+        "pepper": {
+            "crop": "Pepper",
+            "days_to_maturity": "60-90 days after transplanting",
+            "harvest_signs": [
+                "Fruit reaches full size and desired color (green, red, or yellow depending on variety)",
+                "Firm fruit with glossy skin",
+                "Easily snaps off the plant"
+            ],
+            "post_harvest": ["Handle carefully to avoid bruising", "Store at 7-10°C", "Sort by size and color"],
+            "malivundo_tips": "In Pwani heat, peppers color faster. Harvest in morning for best quality."
+        },
+        "cabbage": {
+            "crop": "Cabbage",
+            "days_to_maturity": "70-90 days after transplanting",
+            "harvest_signs": ["Head feels firm and solid when squeezed", "Head reaches expected size for variety", "Outer leaves may start yellowing"],
+            "post_harvest": ["Remove loose outer leaves", "Store in cool shade", "Can keep 2-3 weeks in proper conditions"],
+            "malivundo_tips": "In Pwani, harvest early morning to avoid heat wilting. Don't delay harvest as heads may split."
+        },
+        "spinach": {
+            "crop": "Spinach",
+            "days_to_maturity": "35-45 days from planting",
+            "harvest_signs": ["Leaves reach 15-20cm length", "Dark green color, tender leaves", "Before bolting (flowering)"],
+            "post_harvest": ["Harvest early morning", "Keep moist and cool", "Sell same day for best price"],
+            "malivundo_tips": "Fast crop in Pwani climate. Can get 3-4 harvests by cutting outer leaves."
+        },
+        "cucumber": {
+            "crop": "Cucumber",
+            "days_to_maturity": "50-60 days from planting",
+            "harvest_signs": ["Fruit 15-20cm long, dark green", "Firm and crisp", "Don't let them turn yellow — overripe"],
+            "post_harvest": ["Keep cool and moist", "Sell within 2-3 days", "Sort by size"],
+            "malivundo_tips": "In Pwani heat, check daily — cucumbers grow fast and can become oversized quickly."
+        },
+        "watermelon": {
+            "crop": "Watermelon",
+            "days_to_maturity": "70-85 days from planting",
+            "harvest_signs": ["Ground spot turns cream/yellow", "Tendril near fruit dries up", "Hollow sound when tapped", "Skin resists scratching"],
+            "post_harvest": ["Handle gently — bruising reduces shelf life", "Store in shade", "Can keep 2-3 weeks uncut"],
+            "malivundo_tips": "Reduce irrigation 7-10 days before harvest for sweeter fruit."
+        },
+        "eggplant": {
+            "crop": "Eggplant",
+            "days_to_maturity": "60-80 days after transplanting",
+            "harvest_signs": ["Glossy skin (dull = overripe)", "Firm flesh that springs back", "Seeds still white (not brown)"],
+            "post_harvest": ["Handle carefully", "Store at 10-12°C", "Best sold within a week"],
+            "malivundo_tips": "Similar to tomatoes. Harvest regularly to encourage more fruiting."
+        },
+        "carrot": {
+            "crop": "Carrot",
+            "days_to_maturity": "70-80 days from direct seeding",
+            "harvest_signs": ["Top of root visible at soil surface (2-3cm diameter)", "Bright orange color", "Shoulders about 2cm across"],
+            "post_harvest": ["Remove tops immediately", "Wash gently", "Store in cool moist conditions"],
+            "malivundo_tips": "Sandy soils in parts of Pwani are ideal. Harvest before soil gets too wet."
+        },
+        "lettuce": {
+            "crop": "Lettuce",
+            "days_to_maturity": "45-60 days from transplanting",
+            "harvest_signs": ["Heads feel firm", "Full size for variety", "Before bolting in heat"],
+            "post_harvest": ["Harvest early morning", "Keep moist and cool immediately", "Best sold same day"],
+            "malivundo_tips": "Lettuce bolts fast in Pwani heat. Grow in partial shade if possible. Target hotels and restaurants."
+        },
+        "okra": {
+            "crop": "Okra",
+            "days_to_maturity": "45-55 days from planting",
+            "harvest_signs": ["Pods 7-10cm long", "Tender and snaps easily", "Harvest every 2 days in peak season"],
+            "post_harvest": ["Handle gently", "Sort by size", "Sell fresh within 1-2 days"],
+            "malivundo_tips": "Okra loves Pwani heat. Very productive — harvest frequently to keep plants producing."
+        },
+        "green bean": {
+            "crop": "Green Bean",
+            "days_to_maturity": "45-55 days from planting",
+            "harvest_signs": ["Pods snap cleanly", "Seeds not yet bulging", "Bright green color"],
+            "post_harvest": ["Keep cool", "Sort by size and straightness for export", "Sell within 2 days"],
+            "malivundo_tips": "Good export crop from Pwani. French beans fetch premium prices in European markets."
+        },
+        "maize": {
+            "crop": "Maize",
+            "days_to_maturity": "90-120 days from planting (depends on variety)",
+            "harvest_signs": [
+                "Husks turn brown and dry",
+                "Kernels hard and dent when pressed (for dry maize)",
+                "Milk line has moved to base of kernel",
+                "Moisture content below 20% ideal for storage"
+            ],
+            "post_harvest": [
+                "Dry to 13% moisture before storage",
+                "Shell and store in airtight containers or hermetic bags",
+                "Treat with storage pesticide if needed",
+                "Can sell as green maize (roasted) for higher prices at 70-80 days"
+            ],
+            "malivundo_tips": "In Pwani, plant at start of long rains (March-April) or short rains (October-November). Watch for Fall Armyworm — scout weekly from germination."
         }
     }
     key = crop_type.lower().strip()
     for k, v in recommendations.items():
-        if k in key:
+        if k in key or key in k:
             return v
-    return {"error": f"Unknown crop '{crop_type}'. Available: tomato, onion"}
+    return {"error": f"Unknown crop '{crop_type}'. Available crops: " + ", ".join(recommendations.keys())}
 
 
 MALIVUNDO_LAT = -7.1

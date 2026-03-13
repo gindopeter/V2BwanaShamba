@@ -2,12 +2,30 @@ import { Zone, toggleIrrigation } from '../lib/api';
 import { useState } from 'react';
 import { Pencil } from 'lucide-react';
 
+const CROP_CONFIG: Record<string, { emoji: string; totalDays: number }> = {
+  'Tomato': { emoji: '🍅', totalDays: 120 },
+  'Onion': { emoji: '🧅', totalDays: 150 },
+  'Pepper': { emoji: '🌶️', totalDays: 130 },
+  'Cabbage': { emoji: '🥬', totalDays: 100 },
+  'Spinach': { emoji: '🥬', totalDays: 50 },
+  'Cucumber': { emoji: '🥒', totalDays: 70 },
+  'Watermelon': { emoji: '🍉', totalDays: 90 },
+  'Eggplant': { emoji: '🍆', totalDays: 130 },
+  'Carrot': { emoji: '🥕', totalDays: 90 },
+  'Lettuce': { emoji: '🥗', totalDays: 65 },
+  'Okra': { emoji: '🌿', totalDays: 60 },
+  'Green Bean': { emoji: '🫘', totalDays: 60 },
+  'Maize': { emoji: '🌽', totalDays: 120 },
+};
+
+function getCropConfig(cropType: string) {
+  return CROP_CONFIG[cropType] || { emoji: '🌱', totalDays: 120 };
+}
+
 export default function ZoneCard({ zone, onUpdate, onEdit }: { zone: Zone, onUpdate: () => void, onEdit?: (zone: Zone) => void }) {
-  const isTomato = zone.crop_type === 'Tomato';
+  const { emoji, totalDays } = getCropConfig(zone.crop_type);
   const [loading, setLoading] = useState(false);
-  const totalDays = isTomato ? 120 : 150;
   const progress = Math.min((zone.current_growth_day / totalDays) * 100, 100);
-  const emoji = isTomato ? '🍅' : '🧅';
 
   const handleIrrigationToggle = async () => {
     setLoading(true);
@@ -72,3 +90,5 @@ export default function ZoneCard({ zone, onUpdate, onEdit }: { zone: Zone, onUpd
     </div>
   );
 }
+
+export { CROP_CONFIG, getCropConfig };
