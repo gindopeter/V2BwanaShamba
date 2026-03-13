@@ -81,10 +81,6 @@ export function FreshfieldLogin() {
                   animationFillMode: 'forwards'
                 }}
               >
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="h-[2px] bg-[#fc8e44] rounded-full" style={{ animation: mounted ? 'lineGrow 1s ease-out 0.5s forwards' : 'none', width: 0 }}></div>
-                  <span className="text-[#fc8e44] text-xs font-bold tracking-[0.2em] uppercase whitespace-nowrap">Farm Intelligence Platform</span>
-                </div>
                 <h1 className="text-[44px] font-black text-white leading-[1.05] mb-4" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
                   Agent for your<br/>farming operations
                 </h1>
