@@ -9,6 +9,7 @@ A React + Express app for managing farm operations in Tanzania. It tracks crop z
 - **AI Backend**: Google ADK (Agent Development Kit) multi-agent service via FastAPI/Uvicorn (port 8001)
 - **Database**: SQLite via `better-sqlite3` (file: `farm.db`)
 - **AI**: Google Gemini (`gemini-2.5-flash`) via Google ADK multi-agent framework + `@google/genai` for live voice
+- **Weather**: Open-Meteo API (free, no key) — real 7-day forecast for Malivundo (-7.1, 38.7), used by both dashboard and AI agents for fertigation timing
 - **Auth**: Admin-managed email/password login with bcryptjs + express-session (SQLite session store)
 
 ## ADK Multi-Agent System
@@ -27,7 +28,7 @@ Each agent has access to specific tools that query the SQLite database directly.
 
 - `adk_service/main.py` — FastAPI server exposing `/chat` and `/health` endpoints
 - `adk_service/agents/farm_agents.py` — Agent definitions with instructions and tools
-- `adk_service/tools/farm_tools.py` — Database query tools (zones, tasks, logs, pest info, market prices)
+- `adk_service/tools/farm_tools.py` — Database query tools (zones, tasks, logs, pest info, market prices) + real 7-day weather forecast via Open-Meteo API with fertigation timing advice
 - `adk_service/start.sh` — Startup script that sets environment variables
 
 ### ADK Fallback

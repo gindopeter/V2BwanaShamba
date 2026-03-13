@@ -580,27 +580,71 @@ Be concise and actionable.`;
 
   // --- Simulation / Logic Trigger ---
   // In a real app, this would be a cron job. Here we trigger it manually or periodically from the frontend.
-  app.post("/api/engine/run-checks", isAuthenticated, (req, res) => {
+  app.post("/api/engine/run-checks", isAuthenticated, async (req, res) => {
     // 1. Fetch active zones
     const zones = db.prepare("SELECT * FROM zones WHERE status = 'Active'").all() as any[];
     const newTasks = [];
 
-    // Mock Weather Data (since we might not have a key yet)
-    // In a real implementation, we'd fetch from OpenWeatherMap here
-    const mockWeather = {
-      current: {
-        temp: 28 + Math.random() * 5, // 28-33C
-        condition: Math.random() > 0.5 ? 'Sunny' : 'Partly Cloudy',
-        humidity: 45 + Math.random() * 20,
-        wind: 10 + Math.random() * 10,
-      },
-      nextDay: {
-        tempHigh: 30 + Math.random() * 8, // 30-38C
-        tempLow: 20 + Math.random() * 5,
-        forecastRain: Math.random() * 5, // 0-5mm
-        condition: Math.random() > 0.7 ? 'Rain' : 'Sunny',
+    let mockWeather: any;
+    try {
+      const weatherRes = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=-7.1&longitude=38.7&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,weather_code&timezone=Africa%2FDar_es_Salaam&forecast_days=7`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      if (!weatherRes.ok) throw new Error(`Weather API returned ${weatherRes.status}`);
+      const weatherData = await weatherRes.json() as any;
+      if (!weatherData?.current || !weatherData?.daily) throw new Error('Invalid weather API response');
+
+      const wmoCondition = (code: number) => {
+        const map: Record<number, string> = {
+          0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
+          45: 'Fog', 51: 'Light drizzle', 53: 'Drizzle', 55: 'Dense drizzle',
+          61: 'Slight rain', 63: 'Moderate rain', 65: 'Heavy rain',
+          80: 'Slight showers', 81: 'Moderate showers', 82: 'Heavy showers',
+          95: 'Thunderstorm', 96: 'Thunderstorm with hail'
+        };
+        return map[code] || 'Unknown';
+      };
+
+      const daily = weatherData.daily || {};
+      const forecast = [];
+      const dates = daily.time || [];
+      for (let i = 1; i < dates.length; i++) {
+        const d = new Date(dates[i]);
+        forecast.push({
+          day: d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }),
+          high: Math.round(daily.temperature_2m_max?.[i] || 30),
+          low: Math.round(daily.temperature_2m_min?.[i] || 22),
+          condition: wmoCondition(daily.weather_code?.[i] || 0),
+          rain: daily.precipitation_probability_max?.[i] || 0,
+          precipitation_mm: daily.precipitation_sum?.[i] || 0,
+        });
       }
-    };
+
+      mockWeather = {
+        current: {
+          temp: weatherData.current?.temperature_2m || 28,
+          condition: wmoCondition(weatherData.current?.weather_code || 0),
+          humidity: weatherData.current?.relative_humidity_2m || 60,
+          wind: weatherData.current?.wind_speed_10m || 12,
+        },
+        nextDay: {
+          tempHigh: daily.temperature_2m_max?.[1] || 30,
+          tempLow: daily.temperature_2m_min?.[1] || 22,
+          forecastRain: daily.precipitation_sum?.[1] || 0,
+          condition: wmoCondition(daily.weather_code?.[1] || 0),
+        },
+        forecast,
+      };
+    } catch (e) {
+      console.warn('[weather] Open-Meteo fetch failed, using safe defaults:', (e as Error).message);
+      mockWeather = {
+        current: { temp: 29, condition: 'Data unavailable', humidity: 60, wind: 10 },
+        nextDay: { tempHigh: 31, tempLow: 23, forecastRain: 0, condition: 'Data unavailable' },
+        forecast: [],
+        degraded: true,
+      };
+    }
 
     for (const zone of zones) {
       const plantingDate = new Date(zone.planting_date);

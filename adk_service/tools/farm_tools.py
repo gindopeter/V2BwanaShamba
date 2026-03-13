@@ -1,6 +1,8 @@
 import sqlite3
 import os
-from datetime import datetime
+import json
+import urllib.request
+from datetime import datetime, timedelta
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "farm.db")
 
@@ -317,3 +319,130 @@ def get_harvest_recommendation(crop_type: str) -> dict:
         if k in key:
             return v
     return {"error": f"Unknown crop '{crop_type}'. Available: tomato, onion"}
+
+
+MALIVUNDO_LAT = -7.1
+MALIVUNDO_LON = 38.7
+
+_weather_cache = {"data": None, "fetched_at": None}
+
+
+def get_weather_forecast() -> dict:
+    """Get the current weather and 7-day forecast for Malivundo, Pwani, Tanzania.
+    Returns daily temperature (min/max), precipitation, humidity, wind speed, and rain probability.
+    Use this to advise on fertigation timing, irrigation scheduling, and weather-sensitive farm operations."""
+    now = datetime.now()
+    if _weather_cache["data"] and _weather_cache["fetched_at"] and (now - _weather_cache["fetched_at"]).total_seconds() < 1800:
+        return _weather_cache["data"]
+
+    try:
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?"
+            f"latitude={MALIVUNDO_LAT}&longitude={MALIVUNDO_LON}"
+            f"&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code"
+            f"&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,weather_code"
+            f"&timezone=Africa%2FDar_es_Salaam"
+            f"&forecast_days=7"
+        )
+        req = urllib.request.Request(url, headers={"User-Agent": "BwanaShamba/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+
+        wmo_codes = {
+            0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
+            45: "Fog", 48: "Rime fog",
+            51: "Light drizzle", 53: "Moderate drizzle", 55: "Dense drizzle",
+            61: "Slight rain", 63: "Moderate rain", 65: "Heavy rain",
+            71: "Slight snow", 73: "Moderate snow", 75: "Heavy snow",
+            80: "Slight showers", 81: "Moderate showers", 82: "Violent showers",
+            95: "Thunderstorm", 96: "Thunderstorm with hail", 99: "Severe thunderstorm"
+        }
+
+        current = data.get("current", {})
+        daily = data.get("daily", {})
+
+        result = {
+            "location": "Malivundo, Pwani, Tanzania",
+            "current": {
+                "temp": current.get("temperature_2m"),
+                "humidity": current.get("relative_humidity_2m"),
+                "wind": current.get("wind_speed_10m"),
+                "condition": wmo_codes.get(current.get("weather_code", 0), "Unknown"),
+            },
+            "forecast": [],
+            "fertigation_advice": [],
+        }
+
+        dates = daily.get("time", [])
+        temp_max = daily.get("temperature_2m_max", [])
+        temp_min = daily.get("temperature_2m_min", [])
+        precip = daily.get("precipitation_sum", [])
+        rain_prob = daily.get("precipitation_probability_max", [])
+        wind_max = daily.get("wind_speed_10m_max", [])
+        codes = daily.get("weather_code", [])
+
+        good_fertigation_days = []
+
+        for i in range(len(dates)):
+            day_data = {
+                "date": dates[i],
+                "day_name": (datetime.strptime(dates[i], "%Y-%m-%d")).strftime("%A"),
+                "high": temp_max[i] if i < len(temp_max) else None,
+                "low": temp_min[i] if i < len(temp_min) else None,
+                "precipitation_mm": precip[i] if i < len(precip) else 0,
+                "rain_probability": rain_prob[i] if i < len(rain_prob) else 0,
+                "wind_max": wind_max[i] if i < len(wind_max) else None,
+                "condition": wmo_codes.get(codes[i] if i < len(codes) else 0, "Unknown"),
+            }
+            result["forecast"].append(day_data)
+
+            p = precip[i] if i < len(precip) else 0
+            rp = rain_prob[i] if i < len(rain_prob) else 0
+            w = wind_max[i] if i < len(wind_max) else 0
+            th = temp_max[i] if i < len(temp_max) else 30
+
+            is_good = p < 2 and rp < 30 and w < 25 and th < 38
+            if is_good and i > 0:
+                reasons = []
+                if p < 1:
+                    reasons.append("no rain expected")
+                if rp < 20:
+                    reasons.append(f"low rain chance ({rp}%)")
+                if w < 15:
+                    reasons.append("calm winds")
+                if 25 <= th <= 33:
+                    reasons.append("optimal temperature range")
+                good_fertigation_days.append({
+                    "date": dates[i],
+                    "day_name": day_data["day_name"],
+                    "score": "excellent" if (p < 1 and rp < 15 and w < 15) else "good",
+                    "reasons": reasons,
+                    "best_time": "Early morning (5:30-7:00 AM) before heat builds up"
+                })
+
+        result["fertigation_advice"] = {
+            "recommended_days": good_fertigation_days[:3],
+            "general_rules": [
+                "Apply fertigation when no rain is expected for 24-48 hours (prevents nutrient wash-off)",
+                "Avoid fertigation on windy days (>25 km/h) to prevent uneven distribution",
+                "Best time: early morning (5:30-7:00 AM) when soil absorption is highest",
+                "Avoid fertigation when temperatures exceed 38°C (nutrient burn risk)",
+                "After heavy rain (>10mm), wait 1-2 days before fertigation to avoid waterlogging",
+                "For tomatoes in flowering stage: prioritize calcium + potassium fertigation on calm, dry days",
+                "For onions in bulbing stage: apply sulfur-based fertilizer during dry spells"
+            ]
+        }
+
+        _weather_cache["data"] = result
+        _weather_cache["fetched_at"] = now
+        return result
+
+    except Exception as e:
+        return {
+            "error": f"Could not fetch weather data: {str(e)}",
+            "fallback": {
+                "location": "Malivundo, Pwani, Tanzania",
+                "climate": "Hot and humid coastal, ~1000mm annual rainfall, dry season June-October",
+                "fertigation_general": "Apply fertigation early morning on dry days with low wind. Avoid before expected rain."
+            }
+        }

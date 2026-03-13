@@ -331,16 +331,10 @@ function ZonesDetailView({ zones, onUpdate }: { zones: Zone[]; onUpdate: () => v
 function WeatherDetailView({ weather }: { weather: any }) {
   const current = weather?.current || { temp: 28, condition: 'Loading...', humidity: 72, wind: 12 };
 
-  const forecast = weather?.forecast || [
-    { day: 'Tomorrow', high: 30, low: 22, condition: 'Partly Cloudy', rain: 10 },
-    { day: 'Day 3', high: 29, low: 21, condition: 'Sunny', rain: 0 },
-    { day: 'Day 4', high: 31, low: 23, condition: 'Scattered Showers', rain: 40 },
-    { day: 'Day 5', high: 28, low: 20, condition: 'Rain', rain: 70 },
-  ];
+  const forecast = weather?.forecast || [];
 
-  const days = ['Today', ...forecast.map((f: any) => f.day)];
   const weatherData = [
-    { day: 'Today', high: Math.round(current.temp), low: Math.round(current.temp - 6), condition: current.condition, rain: 5 },
+    { day: 'Today', high: Math.round(current.temp), low: Math.round(current.temp - 6), condition: current.condition, rain: 0 },
     ...forecast,
   ];
 
@@ -370,11 +364,11 @@ function WeatherDetailView({ weather }: { weather: any }) {
       </div>
 
       <div className="flex items-center gap-3">
-        <h3 className="text-xs font-black text-[#002c11] uppercase tracking-[0.15em]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>5-Day Forecast</h3>
+        <h3 className="text-xs font-black text-[#002c11] uppercase tracking-[0.15em]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>7-Day Forecast</h3>
         <div className="h-[2px] w-8 bg-[#fc8e44] rounded-full"></div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         {weatherData.map((d, i) => (
           <div key={i} className={`rounded-xl p-4 shadow-sm border ${i === 0 ? 'bg-[#035925]/5 border-[#035925]/20' : 'bg-white border-[#002c11]/[0.04]'}`}>
             <p className="text-xs font-bold text-[#002c11] mb-2">{d.day}</p>
