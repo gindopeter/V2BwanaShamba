@@ -64,6 +64,15 @@ export function StripeLogin() {
         
         {/* Left: Animated visual panel */}
         <div className="hidden lg:flex lg:w-[56%] relative overflow-hidden">
+          {/* Drone video background */}
+          <video
+            autoPlay
+            muted
+            loop
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover opacity-30"
+            src="/assets/drone_farm_aerial.mp4"
+          />
           {/* Animated mesh gradient blobs */}
           <div className="absolute inset-0">
             <div

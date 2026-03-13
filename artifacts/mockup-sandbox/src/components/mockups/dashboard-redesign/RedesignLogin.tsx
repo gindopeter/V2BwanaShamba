@@ -3,9 +3,21 @@ import './_group.css';
 export function RedesignLogin() {
   return (
     <div className="min-h-screen flex" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-      {/* Left Panel - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-green-800 via-green-700 to-emerald-600 relative overflow-hidden flex-col justify-between p-12">
-        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M30 5 C30 5 35 20 45 25 C35 30 30 45 30 45 C30 45 25 30 15 25 C25 20 30 5 30 5Z\' fill=\'white\' /%3E%3C/svg%3E")', backgroundSize: '60px 60px' }}></div>
+      {/* Left Panel - Video + Branding */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden flex-col justify-between p-12">
+        {/* Drone video background */}
+        <video
+          autoPlay
+          muted
+          loop
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover"
+          src="/assets/drone_farm_aerial.mp4"
+        />
+        {/* Dark overlay for readability */}
+        <div className="absolute inset-0 bg-gradient-to-br from-green-900/80 via-green-800/70 to-emerald-700/60"></div>
+        <div className="absolute inset-0 bg-black/20"></div>
+
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-12 h-12 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/20">
