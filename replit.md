@@ -60,6 +60,15 @@ A React + Express app for managing farm operations in Tanzania. It tracks crop z
 npm run dev   # starts tsx server.ts on port 5000
 ```
 
+## Design
+
+- **Theme**: Freshfield-inspired warm agricultural design
+- **Fonts**: Instrument Sans (headings), Lato (body) — loaded from Google Fonts
+- **Colors**: Deep forest green `#002c11` (sidebar/accents), primary green `#035925`, orange accent `#fc8e44`, warm cream `#f9f6f1` (backgrounds), muted text `#5d6c7b`
+- **Login**: Split-screen — left 58% with drone video + overlay + hero text + stats, right 42% warm cream with form
+- **Dashboard**: Dark green sidebar, cream main area, stat cards with colored left border, green zone cards with gradient progress bars, compact weather widget
+- **Assets**: `public/assets/drone_farm_aerial.mp4` — AI-generated drone aerial video used on login
+
 ## Features
 
 - **Auth** — Admin-managed email/password login (no self-registration)

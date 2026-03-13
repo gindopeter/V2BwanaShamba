@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, Sprout, Map as MapIcon, Settings, Menu, Zap, X, LogOut } from 'lucide-react';
+import { LayoutDashboard, Sprout, Map as MapIcon, Settings, Menu, X, LogOut, MessageSquare } from 'lucide-react';
 
 interface AuthUser {
   id: number;
@@ -20,135 +20,96 @@ interface LayoutProps {
 export default function Layout({ children, currentView, onNavigate, user, onLogout }: LayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  const navItems = [
+    { icon: <LayoutDashboard />, label: 'Overview', view: 'dashboard' },
+    { icon: <Sprout />, label: 'Live Scout', view: 'scout' },
+    { icon: <MapIcon />, label: 'Farm Map', view: 'map' },
+    { icon: <Settings />, label: 'Settings', view: 'settings' },
+  ];
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-500/30">
+    <div className="min-h-screen bg-[#f9f6f1] flex" style={{ fontFamily: "'Lato', system-ui, sans-serif" }}>
       {/* Mobile Header */}
-      <header className="lg:hidden bg-white border-b border-slate-200 p-4 flex items-center justify-between sticky top-0 z-30 shadow-sm">
-        <div className="flex items-center gap-2">
-          <Zap className="w-6 h-6 text-indigo-600" />
-          <h1 className="font-bold text-lg text-slate-900 tracking-tight">Mkulima AI</h1>
+      <header className="lg:hidden fixed top-0 left-0 right-0 bg-[#002c11] p-4 flex items-center justify-between z-30">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 bg-[#035925] rounded-lg flex items-center justify-center">
+            <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          </div>
+          <span className="text-sm font-bold text-white" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>MKULIMA</span>
         </div>
-        <button 
+        <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
+          className="p-2 text-white/60 hover:text-white rounded-lg transition-colors"
         >
-          {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </header>
 
-      <div className="flex">
-        {/* Mobile Menu Overlay */}
-        {isMobileMenuOpen && (
-          <div 
-            className="fixed inset-0 bg-slate-900/50 z-40 lg:hidden backdrop-blur-sm transition-opacity"
-            onClick={() => setIsMobileMenuOpen(false)}
-          />
-        )}
+      {/* Mobile Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
 
-        {/* Sidebar */}
-        <aside className={`fixed inset-y-0 left-0 z-50 transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} lg:relative lg:translate-x-0 transition duration-200 ease-in-out lg:flex flex-col w-64 bg-white border-r border-slate-200 h-screen shadow-2xl lg:shadow-none`}>
-          <div className="p-6 flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-sm">
-              <Zap className="w-6 h-6 text-white" />
-            </div>
-            <span className="font-bold text-xl tracking-tight text-slate-900">Mkulima AI</span>
+      {/* Sidebar */}
+      <aside className={`fixed inset-y-0 left-0 z-50 transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} lg:relative lg:translate-x-0 transition duration-200 ease-in-out w-[240px] bg-[#002c11] flex flex-col shrink-0`}>
+        <div className="p-5 flex items-center gap-3 border-b border-white/[0.08]">
+          <div className="w-9 h-9 bg-[#035925] rounded-lg flex items-center justify-center">
+            <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
           </div>
-
-          <nav className="flex-1 px-4 space-y-2 mt-4">
-            <NavItem 
-              icon={<LayoutDashboard />} 
-              label="Dashboard" 
-              view="dashboard" 
-              currentView={currentView} 
-              onNavigate={onNavigate} 
-              onClose={() => setIsMobileMenuOpen(false)}
-            />
-            <NavItem 
-              icon={<Sprout />} 
-              label="Live Scout" 
-              view="scout" 
-              currentView={currentView} 
-              onNavigate={onNavigate} 
-              onClose={() => setIsMobileMenuOpen(false)}
-            />
-            <NavItem 
-              icon={<MapIcon />} 
-              label="Farm Map" 
-              view="map" 
-              currentView={currentView} 
-              onNavigate={onNavigate} 
-              onClose={() => setIsMobileMenuOpen(false)}
-            />
-            <NavItem 
-              icon={<Settings />} 
-              label="Settings" 
-              view="settings" 
-              currentView={currentView} 
-              onNavigate={onNavigate} 
-              onClose={() => setIsMobileMenuOpen(false)}
-            />
-          </nav>
-
-          <div className="p-4 border-t border-slate-200 space-y-4">
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm shrink-0">
-                  {(user.first_name || user.email || '?')[0].toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-900 truncate">
-                    {user.first_name ? `${user.first_name}${user.last_name ? ' ' + user.last_name : ''}` : user.email}
-                  </p>
-                  <div className="flex items-center gap-1 text-xs text-indigo-600 font-medium">
-                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
-                    {user.role === 'admin' ? 'Admin' : 'Online'}
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <button 
-              onClick={onLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-red-600 hover:bg-red-50 hover:text-red-700 border border-transparent font-semibold"
-            >
-              <LogOut size={20} />
-              Log Out
-            </button>
+          <div>
+            <span className="text-sm font-bold text-white block" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>MKULIMA</span>
+            <span className="text-[9px] text-[#fc8e44] font-bold tracking-[0.15em] uppercase">Dashboard</span>
           </div>
-        </aside>
+        </div>
 
-        {/* Main Content */}
-        <main className="flex-1 p-4 lg:p-8 max-w-7xl mx-auto w-full relative">
-          {children}
-        </main>
-      </div>
+        <nav className="flex-1 px-3 pt-4 space-y-0.5">
+          {navItems.map((item) => {
+            const active = currentView === item.view;
+            return (
+              <button
+                key={item.view}
+                onClick={() => {
+                  onNavigate(item.view);
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all ${active ? 'bg-[#035925] text-white' : 'text-white/40 hover:text-white/70 hover:bg-white/[0.04]'}`}
+              >
+                {React.cloneElement(item.icon as React.ReactElement<{ size?: number }>, { size: 17 })}
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="p-3 border-t border-white/[0.08] space-y-2">
+          <div className="flex items-center gap-2.5 p-2">
+            <div className="w-8 h-8 rounded-lg bg-[#035925] flex items-center justify-center text-white text-[10px] font-black shrink-0">
+              {(user.first_name || user.email || '?')[0].toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-white truncate">
+                {user.first_name ? `${user.first_name}${user.last_name ? ' ' + user.last_name : ''}` : user.email}
+              </p>
+              <p className="text-[10px] text-white/30 truncate">{user.email}</p>
+            </div>
+          </div>
+          <button
+            onClick={onLogout}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] font-medium text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-all"
+          >
+            <LogOut size={14} />
+            Log Out
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-auto lg:pt-0 pt-16">
+        {children}
+      </main>
     </div>
-  );
-}
-
-function NavItem({ icon, label, view, currentView, onNavigate, onClose }: { 
-  icon: React.ReactNode, 
-  label: string, 
-  view: string, 
-  currentView: string, 
-  onNavigate: (view: string) => void,
-  onClose?: () => void
-}) {
-  const active = currentView === view;
-  return (
-    <button 
-      onClick={() => {
-        onNavigate(view);
-        if (onClose) onClose();
-      }}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-        active 
-        ? 'bg-indigo-50 text-indigo-700 font-semibold border border-indigo-100' 
-        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
-      }`}
-    >
-      {React.cloneElement(icon as React.ReactElement<{ size?: number }> , { size: 20 })}
-      {label}
-    </button>
   );
 }

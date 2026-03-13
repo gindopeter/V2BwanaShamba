@@ -81,7 +81,7 @@ export default function Chatbot() {
       <button
         onClick={() => setIsOpen(true)}
         className={cn(
-          "fixed bottom-6 right-6 w-14 h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all z-50",
+          "fixed bottom-6 right-6 w-14 h-14 bg-[#035925] hover:bg-[#002c11] text-white rounded-full shadow-lg flex items-center justify-center transition-all z-50",
           isOpen && "hidden"
         )}
       >
@@ -90,11 +90,11 @@ export default function Chatbot() {
 
       {/* Chat Window */}
       <div className={cn(
-        "fixed bottom-6 right-6 w-96 h-[600px] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col z-50 transition-all transform origin-bottom-right",
+        "fixed bottom-6 right-6 w-96 h-[600px] bg-white rounded-2xl shadow-2xl border border-[#002c11]/10 flex flex-col z-50 transition-all transform origin-bottom-right",
         !isOpen && "scale-0 opacity-0 pointer-events-none"
       )}>
         {/* Header */}
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-emerald-600 text-white rounded-t-2xl">
+        <div className="p-4 border-b border-[#002c11]/5 flex items-center justify-between bg-[#035925] text-white rounded-t-2xl">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
               <MessageSquare className="w-5 h-5" />
@@ -107,7 +107,7 @@ export default function Chatbot() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#f9f6f1]">
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -120,8 +120,8 @@ export default function Chatbot() {
                 className={cn(
                   "p-3 rounded-2xl text-sm",
                   msg.role === 'user'
-                    ? "bg-emerald-600 text-white rounded-tr-none"
-                    : "bg-white border border-slate-200 text-slate-800 rounded-tl-none shadow-sm"
+                    ? "bg-[#035925] text-white rounded-tr-none"
+                    : "bg-white border border-[#002c11]/10 text-slate-800 rounded-tl-none shadow-sm"
                 )}
               >
                 {msg.image && (
@@ -133,8 +133,8 @@ export default function Chatbot() {
           ))}
           {isLoading && (
             <div className="flex justify-start">
-              <div className="bg-white border border-slate-200 p-3 rounded-2xl rounded-tl-none shadow-sm">
-                <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
+              <div className="bg-white border border-[#002c11]/10 p-3 rounded-2xl rounded-tl-none shadow-sm">
+                <Loader2 className="w-5 h-5 animate-spin text-[#035925]" />
               </div>
             </div>
           )}
@@ -142,11 +142,11 @@ export default function Chatbot() {
         </div>
 
         {/* Input */}
-        <div className="p-4 bg-white border-t border-slate-100">
+        <div className="p-4 bg-white border-t border-[#002c11]/5">
           {selectedImage && (
-             <div className="mb-2 flex items-center gap-2 bg-slate-100 p-2 rounded-lg w-fit">
-                <span className="text-xs text-slate-500">Image attached</span>
-                <button onClick={() => setSelectedImage(null)} className="text-slate-400 hover:text-red-500">
+             <div className="mb-2 flex items-center gap-2 bg-[#002c11]/5 p-2 rounded-lg w-fit">
+                <span className="text-xs text-[#5d6c7b]">Image attached</span>
+                <button onClick={() => setSelectedImage(null)} className="text-[#5d6c7b]/60 hover:text-red-500">
                     <X className="w-3 h-3" />
                 </button>
              </div>
@@ -154,7 +154,7 @@ export default function Chatbot() {
           <div className="flex gap-2">
             <button 
                 onClick={() => fileInputRef.current?.click()}
-                className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-slate-50 rounded-lg"
+                className="p-2 text-[#5d6c7b]/60 hover:text-[#035925] hover:bg-[#f9f6f1] rounded-lg"
             >
               <ImageIcon className="w-5 h-5" />
             </button>
@@ -176,7 +176,7 @@ export default function Chatbot() {
             <button 
                 onClick={handleSend}
                 disabled={isLoading || (!input && !selectedImage)}
-                className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 bg-[#035925] text-white rounded-lg hover:bg-[#002c11] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send className="w-4 h-4" />
             </button>

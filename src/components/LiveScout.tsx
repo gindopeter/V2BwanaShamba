@@ -319,7 +319,7 @@ export default function LiveScout() {
       <div className="w-full lg:w-1/2 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex flex-col shadow-sm">
          <div className="p-4 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
             <h3 className="font-bold text-slate-100 flex items-center gap-2">
-              <Video className="w-5 h-5 text-indigo-400"/>
+              <Video className="w-5 h-5 text-[#035925]"/>
               Vision Feed
             </h3>
             <div className="flex gap-2">
@@ -349,7 +349,7 @@ export default function LiveScout() {
             ) : uploadedMedia && uploadedMediaType === 'image' ? (
               <img src={uploadedMedia} className="w-full h-full object-contain" />
             ) : (
-              <div className="text-center text-slate-600">
+              <div className="text-center text-[#5d6c7b]">
                 <Camera className="w-16 h-16 mx-auto mb-4 opacity-20" />
                 <p className="font-medium">Start camera or upload an image/video to begin</p>
               </div>
@@ -363,15 +363,15 @@ export default function LiveScout() {
          </div>
       </div>
 
-      <div className="w-full lg:w-1/2 bg-white border border-slate-100 rounded-2xl flex flex-col shadow-sm">
-         <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center rounded-t-2xl">
-            <h3 className="font-bold text-slate-900 flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 text-indigo-600"/>
+      <div className="w-full lg:w-1/2 bg-white border border-[#002c11]/5 rounded-2xl flex flex-col shadow-sm">
+         <div className="p-4 border-b border-[#002c11]/5 bg-[#f9f6f1] flex justify-between items-center rounded-t-2xl">
+            <h3 className="font-bold text-[#002c11] flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-[#035925]"/>
               Mkulima AI
             </h3>
             <button
               onClick={isLiveVoice ? stopLiveVoice : startLiveVoice}
-              className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-sm ${isLiveVoice ? 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
+              className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-sm ${isLiveVoice ? 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200' : 'bg-[#035925] hover:bg-[#002c11] text-white'}`}
             >
               {isLiveVoice ? <Square className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
               {isLiveVoice ? 'END LIVE TALK' : 'START LIVE TALK'}
@@ -383,15 +383,15 @@ export default function LiveScout() {
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] rounded-2xl p-4 ${
                   msg.role === 'user'
-                    ? 'bg-indigo-600 text-white rounded-br-sm shadow-sm'
+                    ? 'bg-[#035925] text-white rounded-br-sm shadow-sm'
                     : msg.role === 'system'
-                    ? 'bg-slate-50 text-slate-500 border border-slate-200 text-center w-full text-xs font-bold uppercase tracking-wider'
-                    : 'bg-slate-50 text-slate-800 border border-slate-200 rounded-bl-sm shadow-sm'
+                    ? 'bg-[#f9f6f1] text-[#5d6c7b] border border-[#002c11]/10 text-center w-full text-xs font-bold uppercase tracking-wider'
+                    : 'bg-[#f9f6f1] text-slate-800 border border-[#002c11]/10 rounded-bl-sm shadow-sm'
                 }`}>
                   {msg.image && (
-                    <img src={msg.image} alt="Uploaded" className="w-full rounded-xl mb-3 border border-slate-200" />
+                    <img src={msg.image} alt="Uploaded" className="w-full rounded-xl mb-3 border border-[#002c11]/10" />
                   )}
-                  <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : 'text-slate-700'}`}>
+                  <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : 'text-[#002c11]/80'}`}>
                     <ReactMarkdown>{msg.text}</ReactMarkdown>
                   </div>
                 </div>
@@ -399,16 +399,16 @@ export default function LiveScout() {
             ))}
             {isProcessing && (
               <div className="flex justify-start">
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl rounded-bl-sm p-4 flex items-center gap-2 shadow-sm">
-                  <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
-                  <span className="text-sm text-slate-500">Analyzing...</span>
+                <div className="bg-[#f9f6f1] border border-[#002c11]/10 rounded-2xl rounded-bl-sm p-4 flex items-center gap-2 shadow-sm">
+                  <Loader2 className="w-4 h-4 text-[#035925] animate-spin" />
+                  <span className="text-sm text-[#5d6c7b]">Analyzing...</span>
                 </div>
               </div>
             )}
             <div ref={messagesEndRef} />
          </div>
 
-         <div className="p-4 border-t border-slate-100 bg-white rounded-b-2xl">
+         <div className="p-4 border-t border-[#002c11]/5 bg-white rounded-b-2xl">
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -416,13 +416,13 @@ export default function LiveScout() {
                 onChange={e => setInputText(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSendText()}
                 placeholder={isCameraActive ? "Ask about the camera feed..." : "Ask Mkulima AI..."}
-                className="flex-1 bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 placeholder-slate-400 shadow-sm"
+                className="flex-1 bg-white border border-[#002c11]/10 text-[#002c11] rounded-xl px-4 py-3 focus:outline-none focus:border-[#035925] focus:ring-1 focus:ring-[#035925] placeholder-[#5d6c7b]/60 shadow-sm"
                 disabled={isLiveVoice || isProcessing}
               />
               <button
                 onClick={handleSendText}
                 disabled={isLiveVoice || isProcessing || (!inputText.trim() && !uploadedMedia && !isCameraActive)}
-                className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                className="p-3 bg-[#035925] text-white rounded-xl hover:bg-[#002c11] disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
               >
                 <Send className="w-5 h-5"/>
               </button>

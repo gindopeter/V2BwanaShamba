@@ -12,7 +12,7 @@ export default function SettingsPage({ user, onUserUpdate }: SettingsPageProps) 
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex gap-2 bg-white border border-slate-200 rounded-xl p-1.5 shadow-sm">
+      <div className="flex gap-2 bg-white border border-[#002c11]/10 rounded-xl p-1.5 shadow-sm">
         <TabButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<User size={16} />} label="Profile" />
         <TabButton active={activeTab === 'password'} onClick={() => setActiveTab('password')} icon={<Lock size={16} />} label="Password" />
         {user.role === 'admin' && (
@@ -33,8 +33,8 @@ function TabButton({ active, onClick, icon, label }: { active: boolean; onClick:
       onClick={onClick}
       className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
         active
-          ? 'bg-indigo-600 text-white shadow-sm'
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+          ? 'bg-[#035925] text-white shadow-sm'
+          : 'text-[#5d6c7b] hover:bg-[#002c11]/5 hover:text-[#002c11]'
       }`}
     >
       {icon}
@@ -75,40 +75,40 @@ function ProfileSection({ user, onUserUpdate }: { user: AuthUser; onUserUpdate: 
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
-      <h3 className="text-lg font-bold text-slate-900 mb-1">Profile Information</h3>
-      <p className="text-sm text-slate-500 mb-6">Update your name and personal details.</p>
+    <div className="bg-white border border-[#002c11]/10 rounded-2xl shadow-sm p-6">
+      <h3 className="text-lg font-bold text-[#002c11] mb-1">Profile Information</h3>
+      <p className="text-sm text-[#5d6c7b] mb-6">Update your name and personal details.</p>
 
       <form onSubmit={handleSave} className="space-y-5">
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Email</label>
+          <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">Email</label>
           <input
             type="email"
             value={user.email}
             disabled
-            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 cursor-not-allowed"
+            className="w-full px-4 py-3 bg-[#f9f6f1] border border-[#002c11]/10 rounded-xl text-[#5d6c7b] cursor-not-allowed"
           />
-          <p className="text-xs text-slate-400 mt-1">Contact your administrator to change your email.</p>
+          <p className="text-xs text-[#5d6c7b]/60 mt-1">Contact your administrator to change your email.</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">First Name</label>
+            <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">First Name</label>
             <input
               type="text"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
-              className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
+              className="w-full px-4 py-3 border border-[#002c11]/10 rounded-xl text-[#002c11] focus:ring-2 focus:ring-[#035925]/30 focus:border-[#035925] transition-all"
               placeholder="Enter first name"
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Last Name</label>
+            <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">Last Name</label>
             <input
               type="text"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
-              className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
+              className="w-full px-4 py-3 border border-[#002c11]/10 rounded-xl text-[#002c11] focus:ring-2 focus:ring-[#035925]/30 focus:border-[#035925] transition-all"
               placeholder="Enter last name"
             />
           </div>
@@ -119,7 +119,7 @@ function ProfileSection({ user, onUserUpdate }: { user: AuthUser; onUserUpdate: 
         <button
           type="submit"
           disabled={saving}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-medium shadow-sm transition-all active:scale-95 disabled:opacity-70"
+          className="flex items-center gap-2 bg-[#035925] hover:bg-[#002c11] text-white px-6 py-3 rounded-xl font-medium shadow-sm transition-all active:scale-95 disabled:opacity-70"
         >
           {saving ? 'Saving...' : <><Check size={18} /> Save Changes</>}
         </button>
@@ -177,50 +177,50 @@ function PasswordSection() {
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
-      <h3 className="text-lg font-bold text-slate-900 mb-1">Change Password</h3>
-      <p className="text-sm text-slate-500 mb-6">Enter your current password and choose a new one.</p>
+    <div className="bg-white border border-[#002c11]/10 rounded-2xl shadow-sm p-6">
+      <h3 className="text-lg font-bold text-[#002c11] mb-1">Change Password</h3>
+      <p className="text-sm text-[#5d6c7b] mb-6">Enter your current password and choose a new one.</p>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Current Password</label>
+          <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">Current Password</label>
           <div className="relative">
             <input
               type={showCurrent ? 'text' : 'password'}
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full px-4 py-3 pr-12 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
+              className="w-full px-4 py-3 pr-12 border border-[#002c11]/10 rounded-xl text-[#002c11] focus:ring-2 focus:ring-[#035925]/30 focus:border-[#035925] transition-all"
               placeholder="Enter current password"
             />
-            <button type="button" onClick={() => setShowCurrent(!showCurrent)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+            <button type="button" onClick={() => setShowCurrent(!showCurrent)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#5d6c7b]/60 hover:text-[#5d6c7b]">
               {showCurrent ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-1.5">New Password</label>
+          <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">New Password</label>
           <div className="relative">
             <input
               type={showNew ? 'text' : 'password'}
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-4 py-3 pr-12 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
+              className="w-full px-4 py-3 pr-12 border border-[#002c11]/10 rounded-xl text-[#002c11] focus:ring-2 focus:ring-[#035925]/30 focus:border-[#035925] transition-all"
               placeholder="At least 6 characters"
             />
-            <button type="button" onClick={() => setShowNew(!showNew)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+            <button type="button" onClick={() => setShowNew(!showNew)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#5d6c7b]/60 hover:text-[#5d6c7b]">
               {showNew ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Confirm New Password</label>
+          <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">Confirm New Password</label>
           <input
             type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
+            className="w-full px-4 py-3 border border-[#002c11]/10 rounded-xl text-[#002c11] focus:ring-2 focus:ring-[#035925]/30 focus:border-[#035925] transition-all"
             placeholder="Re-enter new password"
           />
         </div>
@@ -230,7 +230,7 @@ function PasswordSection() {
         <button
           type="submit"
           disabled={saving}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-medium shadow-sm transition-all active:scale-95 disabled:opacity-70"
+          className="flex items-center gap-2 bg-[#035925] hover:bg-[#002c11] text-white px-6 py-3 rounded-xl font-medium shadow-sm transition-all active:scale-95 disabled:opacity-70"
         >
           {saving ? 'Changing...' : <><Lock size={18} /> Change Password</>}
         </button>
@@ -301,48 +301,48 @@ function UsersSection({ currentUserId }: { currentUserId: number }) {
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
+    <div className="bg-white border border-[#002c11]/10 rounded-2xl shadow-sm p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-lg font-bold text-slate-900 mb-1">Manage Users</h3>
-          <p className="text-sm text-slate-500">Create and manage user accounts.</p>
+          <h3 className="text-lg font-bold text-[#002c11] mb-1">Manage Users</h3>
+          <p className="text-sm text-[#5d6c7b]">Create and manage user accounts.</p>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all active:scale-95 text-sm"
+          className="flex items-center gap-2 bg-[#035925] hover:bg-[#002c11] text-white px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all active:scale-95 text-sm"
         >
           {showForm ? 'Cancel' : <><UserPlus size={16} /> Add User</>}
         </button>
       </div>
 
       {showForm && (
-        <form onSubmit={handleCreate} className="bg-slate-50 border border-slate-200 rounded-xl p-5 mb-6 space-y-4">
+        <form onSubmit={handleCreate} className="bg-[#f9f6f1] border border-[#002c11]/10 rounded-xl p-5 mb-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Email *</label>
-              <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-slate-900 text-sm focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500" placeholder="user@farm.co.tz" />
+              <label className="block text-sm font-semibold text-[#002c11]/80 mb-1">Email *</label>
+              <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="w-full px-3 py-2.5 border border-[#002c11]/10 rounded-lg text-[#002c11] text-sm focus:ring-2 focus:ring-[#035925]/30 focus:border-[#035925]" placeholder="user@farm.co.tz" />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Password *</label>
-              <input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-slate-900 text-sm focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500" placeholder="Min 6 characters" />
+              <label className="block text-sm font-semibold text-[#002c11]/80 mb-1">Password *</label>
+              <input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-3 py-2.5 border border-[#002c11]/10 rounded-lg text-[#002c11] text-sm focus:ring-2 focus:ring-[#035925]/30 focus:border-[#035925]" placeholder="Min 6 characters" />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">First Name</label>
-              <input type="text" value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-slate-900 text-sm focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500" />
+              <label className="block text-sm font-semibold text-[#002c11]/80 mb-1">First Name</label>
+              <input type="text" value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} className="w-full px-3 py-2.5 border border-[#002c11]/10 rounded-lg text-[#002c11] text-sm focus:ring-2 focus:ring-[#035925]/30 focus:border-[#035925]" />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Last Name</label>
-              <input type="text" value={newLastName} onChange={(e) => setNewLastName(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-slate-900 text-sm focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500" />
+              <label className="block text-sm font-semibold text-[#002c11]/80 mb-1">Last Name</label>
+              <input type="text" value={newLastName} onChange={(e) => setNewLastName(e.target.value)} className="w-full px-3 py-2.5 border border-[#002c11]/10 rounded-lg text-[#002c11] text-sm focus:ring-2 focus:ring-[#035925]/30 focus:border-[#035925]" />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Role</label>
-            <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-slate-900 text-sm focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 bg-white">
+            <label className="block text-sm font-semibold text-[#002c11]/80 mb-1">Role</label>
+            <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-full px-3 py-2.5 border border-[#002c11]/10 rounded-lg text-[#002c11] text-sm focus:ring-2 focus:ring-[#035925]/30 focus:border-[#035925] bg-white">
               <option value="user">User</option>
               <option value="admin">Admin</option>
             </select>
           </div>
-          <button type="submit" disabled={creating} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg font-medium text-sm transition-all active:scale-95 disabled:opacity-70">
+          <button type="submit" disabled={creating} className="flex items-center gap-2 bg-[#035925] hover:bg-[#002c11] text-white px-5 py-2.5 rounded-lg font-medium text-sm transition-all active:scale-95 disabled:opacity-70">
             {creating ? 'Creating...' : <><Plus size={16} /> Create User</>}
           </button>
         </form>
@@ -351,28 +351,28 @@ function UsersSection({ currentUserId }: { currentUserId: number }) {
       <StatusMessage message={message} />
 
       {loading ? (
-        <p className="text-sm text-slate-500 py-4 text-center">Loading users...</p>
+        <p className="text-sm text-[#5d6c7b] py-4 text-center">Loading users...</p>
       ) : (
         <div className="divide-y divide-slate-100">
           {users.map((u) => (
             <div key={u.id} className="flex items-center justify-between py-4 first:pt-0 last:pb-0">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm shrink-0">
+                <div className="w-9 h-9 rounded-full bg-[#035925]/10 flex items-center justify-center text-[#035925] font-bold text-sm shrink-0">
                   {(u.first_name || u.email)[0].toUpperCase()}
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">
+                  <p className="text-sm font-semibold text-[#002c11]">
                     {u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : u.email}
                   </p>
-                  <p className="text-xs text-slate-500">{u.email}</p>
+                  <p className="text-xs text-[#5d6c7b]">{u.email}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${u.role === 'admin' ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${u.role === 'admin' ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-[#002c11]/5 text-[#5d6c7b] border border-[#002c11]/10'}`}>
                   {u.role}
                 </span>
                 {u.id !== currentUserId && (
-                  <button onClick={() => handleDelete(u.id, u.email)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Remove user">
+                  <button onClick={() => handleDelete(u.id, u.email)} className="p-2 text-[#5d6c7b]/60 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Remove user">
                     <Trash2 size={16} />
                   </button>
                 )}
