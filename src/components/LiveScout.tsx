@@ -334,115 +334,153 @@ export default function LiveScout() {
       const VAD_FRAMES_TO_TRIGGER = 2;
       let vadActiveFrames = 0;
 
-      const sessionPromise = ai.live.connect({
-        model: "gemini-live-2.5-flash-preview",
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } } },
-          systemInstruction: "You are BwanaShamba, a farm supervisor in Tanzania helping a farmer with their tomato and onion farm. Help identify pests like Tuta Absoluta, check irrigation, and answer questions. IMPORTANT LANGUAGE RULE: Match the user's language exactly. If they speak Kiswahili, respond entirely in Kiswahili. If they speak English, respond in English. Switch immediately when they switch languages.",
-        },
-        callbacks: {
-          onopen: () => {
-            console.log('[LiveVoice] Session opened successfully');
-            setMessages(prev => [...prev, { role: 'system', text: 'Live voice session started. Speak to your AI assistant.' }]);
+      const liveConfig = {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } } },
+        systemInstruction: "You are BwanaShamba, a farm supervisor in Tanzania helping a farmer with their tomato and onion farm. Help identify pests like Tuta Absoluta, check irrigation, and answer questions. IMPORTANT LANGUAGE RULE: Match the user's language exactly. If they speak Kiswahili, respond entirely in Kiswahili. If they speak English, respond in English. Switch immediately when they switch languages.",
+      };
 
-            processor.onaudioprocess = (e) => {
-              if (!isLiveVoiceRef.current) return;
-              const inputData = e.inputBuffer.getChannelData(0);
+      const liveCallbacks = {
+        onopen: () => {
+          console.log('[LiveVoice] Session opened successfully');
+          setMessages(prev => [...prev, { role: 'system', text: 'Live voice session started. Speak to your AI assistant.' }]);
 
-              let sum = 0;
-              for (let i = 0; i < inputData.length; i++) {
-                sum += Math.abs(inputData[i]);
+          processor.onaudioprocess = (e) => {
+            if (!isLiveVoiceRef.current) return;
+            const inputData = e.inputBuffer.getChannelData(0);
+
+            let sum = 0;
+            for (let i = 0; i < inputData.length; i++) {
+              sum += Math.abs(inputData[i]);
+            }
+            const avgAmplitude = sum / inputData.length;
+
+            if (avgAmplitude > VAD_THRESHOLD) {
+              vadActiveFrames++;
+              if (vadActiveFrames >= VAD_FRAMES_TO_TRIGGER && isAiSpeakingRef.current) {
+                stopAiAudio();
               }
-              const avgAmplitude = sum / inputData.length;
+            } else {
+              vadActiveFrames = 0;
+            }
 
-              if (avgAmplitude > VAD_THRESHOLD) {
-                vadActiveFrames++;
-                if (vadActiveFrames >= VAD_FRAMES_TO_TRIGGER && isAiSpeakingRef.current) {
-                  stopAiAudio();
+            const downsampled = downsample(inputData, audioCtx.sampleRate, 16000);
+            const base64 = float32ToBase64(downsampled);
+            if (sessionRef.current) {
+              sessionRef.current.then(session => {
+                if (isLiveVoiceRef.current) {
+                  session.sendRealtimeInput({ media: { data: base64, mimeType: 'audio/pcm;rate=16000' } });
                 }
-              } else {
-                vadActiveFrames = 0;
-              }
+              }).catch(() => {});
+            }
+          };
 
-              const downsampled = downsample(inputData, audioCtx.sampleRate, 16000);
-              const base64 = float32ToBase64(downsampled);
-              sessionPromise.then(session => {
-                session.sendRealtimeInput({ media: { data: base64, mimeType: 'audio/pcm;rate=16000' } });
-              }).catch(err => console.error('[LiveVoice] Send audio error:', err));
-            };
-
-            frameIntervalRef.current = setInterval(() => {
-              if (videoRef.current && canvasRef.current && isCameraActiveRef.current) {
-                const ctx = canvasRef.current.getContext('2d');
-                if (ctx && videoRef.current.videoWidth > 0) {
-                  canvasRef.current.width = 640;
-                  canvasRef.current.height = 480;
-                  ctx.drawImage(videoRef.current, 0, 0, 640, 480);
-                  const base64Image = canvasRef.current.toDataURL('image/jpeg', 0.5).split(',')[1];
-                  sessionPromise.then(session => {
+          frameIntervalRef.current = setInterval(() => {
+            if (videoRef.current && canvasRef.current && isCameraActiveRef.current && sessionRef.current) {
+              const ctx = canvasRef.current.getContext('2d');
+              if (ctx && videoRef.current.videoWidth > 0) {
+                canvasRef.current.width = 640;
+                canvasRef.current.height = 480;
+                ctx.drawImage(videoRef.current, 0, 0, 640, 480);
+                const base64Image = canvasRef.current.toDataURL('image/jpeg', 0.5).split(',')[1];
+                sessionRef.current.then(session => {
+                  if (isLiveVoiceRef.current) {
                     session.sendRealtimeInput({ media: { data: base64Image, mimeType: 'image/jpeg' } });
-                  }).catch(err => console.error('[LiveVoice] Send frame error:', err));
-                }
-              }
-            }, 2000);
-          },
-          onmessage: (message: any) => {
-            if (message.serverContent?.interrupted) {
-              stopAiAudio();
-              return;
-            }
-
-            const parts = message.serverContent?.modelTurn?.parts;
-            if (parts) {
-              for (const part of parts) {
-                if (part.inlineData?.data) {
-                  isAiSpeakingRef.current = true;
-                  const float32Data = base64ToFloat32(part.inlineData.data);
-                  const buffer = audioCtx.createBuffer(1, float32Data.length, 24000);
-                  buffer.getChannelData(0).set(float32Data);
-                  const playSource = audioCtx.createBufferSource();
-                  playSource.buffer = buffer;
-                  playSource.connect(audioCtx.destination);
-
-                  activeSourcesRef.current.push(playSource);
-                  playSource.onended = () => {
-                    activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== playSource);
-                    if (activeSourcesRef.current.length === 0) {
-                      isAiSpeakingRef.current = false;
-                    }
-                  };
-
-                  const startTime = Math.max(audioCtx.currentTime, nextPlayTimeRef.current);
-                  playSource.start(startTime);
-                  nextPlayTimeRef.current = startTime + buffer.duration;
-                }
-
-                if (part.text) {
-                  setMessages(prev => [...prev, { role: 'ai', text: part.text }]);
-                }
+                  }
+                }).catch(() => {});
               }
             }
+          }, 2000);
+        },
+        onmessage: (message: any) => {
+          if (message.serverContent?.interrupted) {
+            stopAiAudio();
+            return;
+          }
 
-            if (message.serverContent?.turnComplete) {
-              isAiSpeakingRef.current = false;
-            }
-          },
-          onerror: (error: any) => {
-            console.error('[LiveVoice] Session error:', error);
-            if (isLiveVoiceRef.current) {
-              setMessages(prev => [...prev, { role: 'system', text: 'Live voice connection error. Please try again.' }]);
-              stopLiveVoice();
-            }
-          },
-          onclose: (event: any) => {
-            console.log('[LiveVoice] Session closed', event);
-            if (isLiveVoiceRef.current) {
-              stopLiveVoice();
+          const parts = message.serverContent?.modelTurn?.parts;
+          if (parts) {
+            for (const part of parts) {
+              if (part.inlineData?.data) {
+                isAiSpeakingRef.current = true;
+                const float32Data = base64ToFloat32(part.inlineData.data);
+                const buffer = audioCtx.createBuffer(1, float32Data.length, 24000);
+                buffer.getChannelData(0).set(float32Data);
+                const playSource = audioCtx.createBufferSource();
+                playSource.buffer = buffer;
+                playSource.connect(audioCtx.destination);
+
+                activeSourcesRef.current.push(playSource);
+                playSource.onended = () => {
+                  activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== playSource);
+                  if (activeSourcesRef.current.length === 0) {
+                    isAiSpeakingRef.current = false;
+                  }
+                };
+
+                const startTime = Math.max(audioCtx.currentTime, nextPlayTimeRef.current);
+                playSource.start(startTime);
+                nextPlayTimeRef.current = startTime + buffer.duration;
+              }
+
+              if (part.text) {
+                setMessages(prev => [...prev, { role: 'ai', text: part.text }]);
+              }
             }
           }
+
+          if (message.serverContent?.turnComplete) {
+            isAiSpeakingRef.current = false;
+          }
+        },
+        onerror: (error: any) => {
+          console.error('[LiveVoice] Session error:', error);
+          const errMsg = error?.message || error?.toString?.() || 'Unknown connection error';
+          if (isLiveVoiceRef.current) {
+            setMessages(prev => [...prev, { role: 'system', text: `Live voice error: ${errMsg}` }]);
+            stopLiveVoice();
+          }
+        },
+        onclose: (event: any) => {
+          console.log('[LiveVoice] Session closed', event);
+          const reason = event?.reason || event?.code || '';
+          if (isLiveVoiceRef.current) {
+            setMessages(prev => [...prev, { role: 'system', text: reason ? `Live session closed: ${reason}` : 'Live session closed by server.' }]);
+            stopLiveVoice();
+          }
         }
-      });
+      };
+
+      const LIVE_MODELS = [
+        "gemini-live-2.5-flash-preview",
+        "gemini-2.0-flash-live-preview-04-09",
+      ];
+
+      let sessionPromise: Promise<any> | null = null;
+      let lastError: any = null;
+
+      for (const model of LIVE_MODELS) {
+        try {
+          console.log(`[LiveVoice] Trying model: ${model}`);
+          sessionPromise = ai.live.connect({
+            model,
+            config: liveConfig,
+            callbacks: liveCallbacks,
+          });
+          await sessionPromise;
+          console.log(`[LiveVoice] Connected with model: ${model}`);
+          break;
+        } catch (err: any) {
+          console.warn(`[LiveVoice] Model ${model} failed:`, err?.message || err);
+          lastError = err;
+          sessionPromise = null;
+        }
+      }
+
+      if (!sessionPromise) {
+        throw lastError || new Error('All live voice models failed to connect');
+      }
+
       sessionRef.current = sessionPromise;
 
     } catch (err: any) {
