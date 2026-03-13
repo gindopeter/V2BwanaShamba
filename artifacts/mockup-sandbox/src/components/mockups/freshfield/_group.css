@@ -1,0 +1,17 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Lato:wght@300;400;700;900&display=swap');
+
+:root {
+  --font-heading: 'Instrument Sans', system-ui, sans-serif;
+  --font-body: 'Lato', system-ui, sans-serif;
+  --green-primary: #035925;
+  --green-dark: #002c11;
+  --orange-accent: #fc8e44;
+  --gold-accent: #f5e197;
+  --warm-bg: #f9f6f1;
+}
+
+body {
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+}
