@@ -4,5 +4,7 @@ export const modules: ModuleMap = {
   "./components/mockups/dashboard-redesign/CurrentDashboard.tsx": () => import("../components/mockups/dashboard-redesign/CurrentDashboard.tsx"),
   "./components/mockups/dashboard-redesign/CurrentLogin.tsx": () => import("../components/mockups/dashboard-redesign/CurrentLogin.tsx"),
   "./components/mockups/dashboard-redesign/RedesignDashboard.tsx": () => import("../components/mockups/dashboard-redesign/RedesignDashboard.tsx"),
-  "./components/mockups/dashboard-redesign/RedesignLogin.tsx": () => import("../components/mockups/dashboard-redesign/RedesignLogin.tsx")
+  "./components/mockups/dashboard-redesign/RedesignLogin.tsx": () => import("../components/mockups/dashboard-redesign/RedesignLogin.tsx"),
+  "./components/mockups/overhaul/OverhaulDashboard.tsx": () => import("../components/mockups/overhaul/OverhaulDashboard.tsx"),
+  "./components/mockups/overhaul/OverhaulLogin.tsx": () => import("../components/mockups/overhaul/OverhaulLogin.tsx")
 };
