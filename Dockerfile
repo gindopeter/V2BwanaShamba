@@ -1,4 +1,4 @@
-FROM node:20-slim AS builder
+FROM node:22 AS builder
 
 WORKDIR /app
 
@@ -10,15 +10,15 @@ COPY . .
 
 RUN npm run build
 
-FROM node:20-slim
+RUN rm -rf node_modules && npm ci --omit=dev && npm cache clean --force
+
+FROM node:22-slim
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-
-RUN npm ci --omit=dev && npm install tsx
-
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package.json ./
 
 COPY server.ts ./
 COPY server/ ./server/
@@ -29,4 +29,4 @@ EXPOSE 8080
 ENV NODE_ENV=production
 ENV PORT=8080
 
-CMD ["npx", "tsx", "server.ts"]
+CMD ["node", "node_modules/.bin/tsx", "server.ts"]
