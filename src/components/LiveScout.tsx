@@ -71,7 +71,6 @@ export default function LiveScout() {
   const frameIntervalRef = useRef<any>(null);
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const isAiSpeakingRef = useRef(false);
-  const vadSilenceCountRef = useRef(0);
 
   const isLiveVoiceRef = useRef(false);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -80,6 +79,12 @@ export default function LiveScout() {
   useEffect(() => { isLiveVoiceRef.current = isLiveVoice; }, [isLiveVoice]);
   useEffect(() => { mediaStreamRef.current = mediaStream; }, [mediaStream]);
   useEffect(() => { isCameraActiveRef.current = isCameraActive; }, [isCameraActive]);
+
+  useEffect(() => {
+    if (videoRef.current && mediaStream) {
+      videoRef.current.srcObject = mediaStream;
+    }
+  }, [mediaStream]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -183,7 +188,6 @@ export default function LiveScout() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         setMediaStream(stream);
-        if (videoRef.current) videoRef.current.srcObject = stream;
         setIsCameraActive(true);
         setUploadedMedia(null);
       } catch (err: any) {
@@ -205,6 +209,7 @@ export default function LiveScout() {
       };
       reader.readAsDataURL(file);
     }
+    if (e.target) e.target.value = '';
   };
 
   const extractVideoFrame = useCallback((): string | undefined => {
@@ -221,8 +226,9 @@ export default function LiveScout() {
     return undefined;
   }, []);
 
-  const handleSendText = async () => {
-    if (!inputText.trim() && !uploadedMedia && !isCameraActive) return;
+  const handleSendText = async (overrideText?: string) => {
+    const textToSend = overrideText || inputText;
+    if (!textToSend.trim() && !uploadedMedia && !isCameraActive) return;
 
     let imageData = uploadedMedia ? uploadedMedia.split(',')[1] : undefined;
     let mimeType = 'image/jpeg';
@@ -234,15 +240,17 @@ export default function LiveScout() {
 
     if (isCameraActive && videoRef.current && canvasRef.current && !imageData) {
       const ctx = canvasRef.current.getContext('2d');
-      canvasRef.current.width = 640;
-      canvasRef.current.height = 480;
-      ctx?.drawImage(videoRef.current, 0, 0, 640, 480);
-      imageData = canvasRef.current.toDataURL('image/jpeg', 0.8).split(',')[1];
+      if (ctx && videoRef.current.videoWidth > 0) {
+        canvasRef.current.width = 640;
+        canvasRef.current.height = 480;
+        ctx.drawImage(videoRef.current, 0, 0, 640, 480);
+        imageData = canvasRef.current.toDataURL('image/jpeg', 0.8).split(',')[1];
+      }
     }
 
     const userMsg = {
       role: 'user',
-      text: inputText || (imageData ? 'Analyze this image.' : ''),
+      text: textToSend || (imageData ? 'Analyze this image.' : ''),
       image: uploadedMedia && uploadedMediaType === 'image'
         ? uploadedMedia
         : (imageData ? `data:image/jpeg;base64,${imageData}` : undefined)
@@ -297,7 +305,7 @@ export default function LiveScout() {
 
       let currentAudioStream: MediaStream;
       try {
-        currentAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        currentAudioStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
         audioStreamRef.current = currentAudioStream;
       } catch (err: any) {
         console.error("Live API Error:", err);
@@ -317,22 +325,24 @@ export default function LiveScout() {
       source.connect(processor);
       processor.connect(audioCtx.destination);
 
-      const VAD_THRESHOLD = 0.015;
-      const VAD_FRAMES_TO_TRIGGER = 3;
+      const VAD_THRESHOLD = 0.012;
+      const VAD_FRAMES_TO_TRIGGER = 2;
       let vadActiveFrames = 0;
 
       const sessionPromise = ai.live.connect({
-        model: "gemini-2.5-flash-native-audio-preview-12-2025",
+        model: "gemini-2.5-flash-preview-native-audio-dialog",
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } } },
-          systemInstruction: "You are BwanaShamba, a farm supervisor in Tanzania. You are looking at a live camera feed of a tomato and onion farm. Help the farmer identify pests like Tuta Absoluta, check irrigation, and answer questions. IMPORTANT: Match the user's language. If they speak Kiswahili, respond in Kiswahili. If they speak English, respond in English. Switch immediately when they switch.",
+          systemInstruction: "You are BwanaShamba, a farm supervisor in Tanzania helping a farmer with their tomato and onion farm. Help identify pests like Tuta Absoluta, check irrigation, and answer questions. IMPORTANT LANGUAGE RULE: Match the user's language exactly. If they speak Kiswahili, respond entirely in Kiswahili. If they speak English, respond in English. Switch immediately when they switch languages.",
         },
         callbacks: {
           onopen: () => {
+            console.log('[LiveVoice] Session opened successfully');
             setMessages(prev => [...prev, { role: 'system', text: 'Live voice session started. Speak to your AI assistant.' }]);
 
             processor.onaudioprocess = (e) => {
+              if (!isLiveVoiceRef.current) return;
               const inputData = e.inputBuffer.getChannelData(0);
 
               let sum = 0;
@@ -354,20 +364,20 @@ export default function LiveScout() {
               const base64 = float32ToBase64(downsampled);
               sessionPromise.then(session => {
                 session.sendRealtimeInput({ media: { data: base64, mimeType: 'audio/pcm;rate=16000' } });
-              });
+              }).catch(err => console.error('[LiveVoice] Send audio error:', err));
             };
 
             frameIntervalRef.current = setInterval(() => {
               if (videoRef.current && canvasRef.current && isCameraActiveRef.current) {
                 const ctx = canvasRef.current.getContext('2d');
-                if (ctx) {
+                if (ctx && videoRef.current.videoWidth > 0) {
                   canvasRef.current.width = 640;
                   canvasRef.current.height = 480;
                   ctx.drawImage(videoRef.current, 0, 0, 640, 480);
                   const base64Image = canvasRef.current.toDataURL('image/jpeg', 0.5).split(',')[1];
                   sessionPromise.then(session => {
                     session.sendRealtimeInput({ media: { data: base64Image, mimeType: 'image/jpeg' } });
-                  });
+                  }).catch(err => console.error('[LiveVoice] Send frame error:', err));
                 }
               }
             }, 2000);
@@ -378,39 +388,48 @@ export default function LiveScout() {
               return;
             }
 
-            const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-            if (base64Audio) {
-              isAiSpeakingRef.current = true;
-              const float32Data = base64ToFloat32(base64Audio);
-              const buffer = audioCtx.createBuffer(1, float32Data.length, 24000);
-              buffer.getChannelData(0).set(float32Data);
-              const playSource = audioCtx.createBufferSource();
-              playSource.buffer = buffer;
-              playSource.connect(audioCtx.destination);
+            const parts = message.serverContent?.modelTurn?.parts;
+            if (parts) {
+              for (const part of parts) {
+                if (part.inlineData?.data) {
+                  isAiSpeakingRef.current = true;
+                  const float32Data = base64ToFloat32(part.inlineData.data);
+                  const buffer = audioCtx.createBuffer(1, float32Data.length, 24000);
+                  buffer.getChannelData(0).set(float32Data);
+                  const playSource = audioCtx.createBufferSource();
+                  playSource.buffer = buffer;
+                  playSource.connect(audioCtx.destination);
 
-              activeSourcesRef.current.push(playSource);
-              playSource.onended = () => {
-                activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== playSource);
-                if (activeSourcesRef.current.length === 0) {
-                  isAiSpeakingRef.current = false;
+                  activeSourcesRef.current.push(playSource);
+                  playSource.onended = () => {
+                    activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== playSource);
+                    if (activeSourcesRef.current.length === 0) {
+                      isAiSpeakingRef.current = false;
+                    }
+                  };
+
+                  const startTime = Math.max(audioCtx.currentTime, nextPlayTimeRef.current);
+                  playSource.start(startTime);
+                  nextPlayTimeRef.current = startTime + buffer.duration;
                 }
-              };
 
-              const startTime = Math.max(audioCtx.currentTime, nextPlayTimeRef.current);
-              playSource.start(startTime);
-              nextPlayTimeRef.current = startTime + buffer.duration;
+                if (part.text) {
+                  setMessages(prev => [...prev, { role: 'ai', text: part.text }]);
+                }
+              }
             }
 
             if (message.serverContent?.turnComplete) {
               isAiSpeakingRef.current = false;
             }
-
-            const text = message.serverContent?.modelTurn?.parts?.[0]?.text;
-            if (text) {
-              setMessages(prev => [...prev, { role: 'ai', text }]);
-            }
+          },
+          onerror: (error: any) => {
+            console.error('[LiveVoice] Session error:', error);
+            setMessages(prev => [...prev, { role: 'system', text: 'Live voice connection error. Please try again.' }]);
+            stopLiveVoice();
           },
           onclose: () => {
+            console.log('[LiveVoice] Session closed');
             stopLiveVoice();
           }
         }
@@ -425,6 +444,7 @@ export default function LiveScout() {
   };
 
   const stopLiveVoice = () => {
+    if (!isLiveVoiceRef.current && !processorRef.current && !audioStreamRef.current) return;
     setIsLiveVoice(false);
     stopAiAudio();
     if (processorRef.current) {
@@ -509,7 +529,13 @@ export default function LiveScout() {
       </div>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <video ref={videoRef} autoPlay playsInline muted className="hidden" style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} />
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none', top: -9999, left: -9999 }}
+        />
 
         <div className="flex items-center gap-2 px-4 py-2 lg:hidden">
           <button
@@ -543,7 +569,7 @@ export default function LiveScout() {
             {uploadedMediaType === 'video' ? (
               <video ref={uploadedVideoRef} src={uploadedMedia} controls className="w-full max-h-48 object-contain" />
             ) : (
-              <img src={uploadedMedia} className="w-full max-h-48 object-contain" />
+              <img src={uploadedMedia} className="w-full max-h-48 object-contain" alt="Upload preview" />
             )}
             <button
               onClick={() => setUploadedMedia(null)}
@@ -576,10 +602,7 @@ export default function LiveScout() {
                 ].map((suggestion) => (
                   <button
                     key={suggestion.text}
-                    onClick={() => {
-                      setInputText(suggestion.text);
-                      textareaRef.current?.focus();
-                    }}
+                    onClick={() => handleSendText(suggestion.text)}
                     className="text-left p-3 rounded-xl border border-[#002c11]/8 bg-white hover:bg-[#035925]/5 hover:border-[#035925]/20 transition-all text-[12px] text-[#002c11]/70 leading-snug group"
                   >
                     <span className="text-base mb-1 block">{suggestion.icon}</span>
@@ -651,6 +674,7 @@ export default function LiveScout() {
                     onClick={() => fileInputRef.current?.click()}
                     className="p-2 text-[#5d6c7b]/60 hover:text-[#002c11] hover:bg-[#002c11]/5 rounded-lg transition-colors"
                     title="Upload image or video"
+                    type="button"
                   >
                     <Paperclip className="w-5 h-5" />
                   </button>
@@ -658,10 +682,17 @@ export default function LiveScout() {
                     onClick={toggleCamera}
                     className={`p-2 rounded-lg transition-colors ${isCameraActive ? 'text-red-500 bg-red-50' : 'text-[#5d6c7b]/60 hover:text-[#002c11] hover:bg-[#002c11]/5'}`}
                     title={isCameraActive ? 'Stop camera' : 'Start camera'}
+                    type="button"
                   >
                     <Camera className="w-5 h-5" />
                   </button>
-                  <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*" onChange={handleFileUpload} />
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept="image/*,video/*"
+                    onChange={handleFileUpload}
+                  />
                 </div>
 
                 <textarea
@@ -685,13 +716,15 @@ export default function LiveScout() {
                     onClick={isLiveVoice ? stopLiveVoice : startLiveVoice}
                     className={`p-2 rounded-lg transition-colors ${isLiveVoice ? 'text-red-500 bg-red-50 animate-pulse' : 'text-[#5d6c7b]/60 hover:text-[#002c11] hover:bg-[#002c11]/5'}`}
                     title={isLiveVoice ? 'End live voice' : 'Start live voice'}
+                    type="button"
                   >
                     {isLiveVoice ? <Square className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                   </button>
                   <button
-                    onClick={handleSendText}
+                    onClick={() => handleSendText()}
                     disabled={isLiveVoice || isProcessing || (!inputText.trim() && !uploadedMedia && !isCameraActive)}
                     className="p-2 bg-[#035925] text-white rounded-lg hover:bg-[#002c11] disabled:opacity-30 disabled:hover:bg-[#035925] transition-colors"
+                    type="button"
                   >
                     <ArrowUp className="w-5 h-5" />
                   </button>
