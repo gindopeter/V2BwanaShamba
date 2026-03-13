@@ -63,7 +63,7 @@ export function StripeLogin() {
       <div className="min-h-screen bg-[#080b09] flex overflow-hidden" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
         
         {/* Left: Animated visual panel */}
-        <div className="hidden lg:flex lg:w-[56%] relative overflow-hidden">
+        <div className="flex w-[56%] relative overflow-hidden">
           {/* Drone video background */}
           <video
             autoPlay
@@ -71,7 +71,7 @@ export function StripeLogin() {
             loop
             playsInline
             className="absolute inset-0 w-full h-full object-cover opacity-30"
-            src="/assets/drone_farm_aerial.mp4"
+            src="/__mockup/assets/drone_farm_aerial.mp4"
           />
           {/* Animated mesh gradient blobs */}
           <div className="absolute inset-0">
@@ -228,7 +228,7 @@ export function StripeLogin() {
             }}
           >
             {/* Mobile logo */}
-            <div className="lg:hidden flex items-center gap-3 mb-12">
+            <div className="hidden items-center gap-3 mb-12">
               <div className="w-10 h-10 rounded-2xl bg-emerald-400 flex items-center justify-center" style={{ animation: 'pulseGlow 3s ease-in-out infinite' }}>
                 <svg className="w-5 h-5 text-[#080b09]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
               </div>

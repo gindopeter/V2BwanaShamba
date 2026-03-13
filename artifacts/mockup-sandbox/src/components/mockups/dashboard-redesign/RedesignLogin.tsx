@@ -4,7 +4,7 @@ export function RedesignLogin() {
   return (
     <div className="min-h-screen flex" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* Left Panel - Video + Branding */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden flex-col justify-between p-12">
+      <div className="w-1/2 relative overflow-hidden flex flex-col justify-between p-12">
         {/* Drone video background */}
         <video
           autoPlay
@@ -12,7 +12,7 @@ export function RedesignLogin() {
           loop
           playsInline
           className="absolute inset-0 w-full h-full object-cover"
-          src="/assets/drone_farm_aerial.mp4"
+          src="/__mockup/assets/drone_farm_aerial.mp4"
         />
         {/* Dark overlay for readability */}
         <div className="absolute inset-0 bg-gradient-to-br from-green-900/80 via-green-800/70 to-emerald-700/60"></div>
@@ -52,7 +52,7 @@ export function RedesignLogin() {
       {/* Right Panel - Login Form */}
       <div className="flex-1 bg-white flex items-center justify-center p-8">
         <div className="w-full max-w-sm">
-          <div className="lg:hidden flex items-center gap-2 mb-10">
+          <div className="hidden items-center gap-2 mb-10">
             <div className="w-10 h-10 bg-green-700 rounded-xl flex items-center justify-center">
               <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" /></svg>
             </div>
