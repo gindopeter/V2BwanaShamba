@@ -5,3 +5,5 @@ farm.db
 .replit
 .git
 *.zip
+dist
+artifacts

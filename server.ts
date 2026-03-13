@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import db from "./server/db.ts";
 import session from "express-session";
@@ -589,6 +588,7 @@ Be concise and actionable.`;
   const isProd = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
   
   if (!isProd) {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
