@@ -91,7 +91,7 @@ export default function Login({ onLogin }: LoginProps) {
                 <div className="w-10 h-10 bg-[#035925] rounded-lg flex items-center justify-center border border-white/10">
                   <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                 </div>
-                <span className="text-lg font-bold text-white" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>MKULIMA</span>
+                <span className="text-lg font-bold text-white" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>BWANASHAMBA</span>
               </div>
             </div>
 
@@ -160,7 +160,7 @@ export default function Login({ onLogin }: LoginProps) {
               <div className="w-10 h-10 bg-[#035925] rounded-lg flex items-center justify-center">
                 <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
               </div>
-              <span className="text-lg font-bold text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>MKULIMA</span>
+              <span className="text-lg font-bold text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>BWANASHAMBA</span>
             </div>
 
             <div className="mb-8">

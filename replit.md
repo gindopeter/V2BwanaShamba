@@ -1,4 +1,4 @@
-# Mkulima AI - Farm Operations Dashboard
+# BwanaShamba - Farm Operations Dashboard
 
 A React + Express app for managing farm operations in Tanzania. It tracks crop zones, irrigation, tasks, and provides an AI-powered chatbot and live scouting tool.
 

@@ -189,7 +189,7 @@ export default function LiveScout() {
       setMessages(prev => [...prev, { role: 'ai', text: data.reply || '' }]);
     } catch (err) {
       console.error(err);
-      setMessages(prev => [...prev, { role: 'system', text: 'Error connecting to Mkulima AI. Check that your API key is configured.' }]);
+      setMessages(prev => [...prev, { role: 'system', text: 'Error connecting to BwanaShamba. Check that your API key is configured.' }]);
     } finally {
       setIsProcessing(false);
     }
@@ -233,7 +233,7 @@ export default function LiveScout() {
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } } },
-          systemInstruction: "You are Mkulima AI, a farm supervisor in Tanzania. You are looking at a live camera feed of a tomato and onion farm. Help the farmer identify pests like Tuta Absoluta, check irrigation, and answer questions. Speak in English and Kiswahili.",
+          systemInstruction: "You are BwanaShamba, a farm supervisor in Tanzania. You are looking at a live camera feed of a tomato and onion farm. Help the farmer identify pests like Tuta Absoluta, check irrigation, and answer questions. Speak in English and Kiswahili.",
         },
         callbacks: {
           onopen: () => {
@@ -482,7 +482,7 @@ export default function LiveScout() {
                     handleSendText();
                   }
                 }}
-                placeholder="Ask Mkulima AI anything..."
+                placeholder="Ask BwanaShamba anything..."
                 rows={1}
                 className="flex-1 resize-none bg-transparent text-[#002c11] text-[14px] leading-relaxed placeholder-[#5d6c7b]/40 focus:outline-none py-2 max-h-[200px]"
                 disabled={isLiveVoice || isProcessing}
@@ -507,7 +507,7 @@ export default function LiveScout() {
             </div>
           </div>
           <p className="text-[10px] text-[#5d6c7b]/40 text-center mt-2">
-            Mkulima AI can make mistakes. Verify important farm decisions.
+            BwanaShamba can make mistakes. Verify important farm decisions.
           </p>
         </div>
       </div>

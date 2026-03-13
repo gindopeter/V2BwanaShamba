@@ -35,7 +35,7 @@ export default function Layout({ children, currentView, onNavigate, user, onLogo
           <div className="w-8 h-8 bg-[#035925] rounded-lg flex items-center justify-center">
             <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
           </div>
-          <span className="text-sm font-bold text-white" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>MKULIMA</span>
+          <span className="text-sm font-bold text-white" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>BWANASHAMBA</span>
         </div>
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -60,7 +60,7 @@ export default function Layout({ children, currentView, onNavigate, user, onLogo
             <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
           </div>
           <div>
-            <span className="text-sm font-bold text-white block" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>MKULIMA</span>
+            <span className="text-sm font-bold text-white block" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>BWANASHAMBA</span>
             <span className="text-[9px] text-[#fc8e44] font-bold tracking-[0.15em] uppercase">Dashboard</span>
           </div>
         </div>

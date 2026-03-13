@@ -85,7 +85,7 @@ async function startServer() {
   const SqliteStore = BetterSqlite3SessionStore(session);
   app.set("trust proxy", 1);
   app.use(session({
-    secret: process.env.SESSION_SECRET || 'mkulima-farm-secret-key-change-in-production',
+    secret: process.env.SESSION_SECRET || 'bwanashamba-farm-secret-key-change-in-production',
     store: new SqliteStore({ client: db, expired: { clear: true, intervalMs: 900000 } }),
     resave: false,
     saveUninitialized: false,
@@ -318,7 +318,7 @@ async function startServer() {
       const ai = new GoogleGenAI({ apiKey });
 
       const farmContext = getFarmContext();
-      const systemInstruction = `You are 'Mkulima AI' (AI Farm Assistant) for a 5-acre tomato and onion farm in Malivundo, Pwani, Tanzania.
+      const systemInstruction = `You are 'BwanaShamba' (AI Farm Assistant) for a 5-acre tomato and onion farm in Malivundo, Pwani, Tanzania.
 You help farmers with questions about crops, soil, pest control, irrigation, and fertigation.
 You speak English and Kiswahili. If the user speaks Kiswahili, respond in Kiswahili.
 Be concise, practical, and helpful. Use the live farm data below to give specific, accurate answers about zones, tasks, and conditions.
