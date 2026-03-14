@@ -78,6 +78,7 @@ If the ADK service is unavailable, the Node.js server falls back to direct Gemin
 - `POST /api/chat` — Chat via ADK multi-agent service (supports SSE streaming with `stream: true` in body; falls back to direct Gemini)
 - `POST /api/analyze-crop` — Analyze crop image with Gemini Vision
 - `GET /api/gemini-session` — Get API key for live voice sessions
+- `POST /api/voice-transcript` — Save voice session transcript to database (with ownership validation)
 - `POST /api/engine/run-checks` — Run irrigation scheduling engine
 
 ## Auth System
@@ -113,7 +114,7 @@ Both services run as Replit workflows.
 - **Dashboard** — Zone cards (with edit button), task list, weather widget, yield/water stats
 - **Zone Management** — Add, edit, and delete zones from the Active Zones detail view
 - **AI Assistant** — Multi-agent ADK-powered chat with SSE streaming responses, pest scout, irrigation, task planner, and market specialists
-- **Live Scout** — Camera/image/video upload + AI crop analysis + live voice mode
+- **Live Scout** — Camera/image/video upload + AI crop analysis + live voice mode with transcript saving (both user speech and AI responses saved to conversation history via Gemini inputTranscription/outputTranscription)
 - **The Farm** — Farm overview with allocation bar, active/inactive acreage stats, and full zone management (add/edit/delete)
 - **Chatbot** — AI assistant with access to all live farm data (zones, tasks, logs)
 - **Task Engine** — Auto-generates irrigation tasks based on crop stage and mock weather
