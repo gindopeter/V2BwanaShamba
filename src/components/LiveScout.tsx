@@ -452,27 +452,20 @@ export default function LiveScout() {
             if (event.results[i].isFinal) {
               const transcript = event.results[i][0].transcript.trim();
               if (transcript) {
-                if (isAiSpeakingRef.current) {
-                  console.log('[LiveVoice] AI spoken transcript:', transcript);
-                  setMessages(prev => [...prev, { role: 'ai', text: transcript }]);
-                  voiceMessagesRef.current.push({ role: 'ai', text: transcript });
-                } else {
-                  console.log('[LiveVoice] User speech transcript:', transcript);
-                  setMessages(prev => [...prev, { role: 'user', text: transcript }]);
-                  voiceMessagesRef.current.push({ role: 'user', text: transcript });
-                }
+                console.log('[LiveVoice] User speech transcript:', transcript);
+                setMessages(prev => [...prev, { role: 'user', text: transcript }]);
+                voiceMessagesRef.current.push({ role: 'user', text: transcript });
               }
             }
           }
         };
         recognition.onerror = (event: any) => {
-          console.log('[LiveVoice] Speech recognition error:', event.error);
-          if (event.error === 'not-allowed') {
-            console.log('[LiveVoice] Speech recognition not allowed, continuing without user transcription');
+          if (event.error !== 'aborted') {
+            console.log('[LiveVoice] Speech recognition error:', event.error);
           }
         };
         recognition.onend = () => {
-          if (isLiveVoiceRef.current) {
+          if (isLiveVoiceRef.current && !isAiSpeakingRef.current) {
             try { recognition.start(); } catch {}
           }
         };
@@ -613,7 +606,13 @@ export default function LiveScout() {
           if (parts) {
             for (const part of parts) {
               if (part.inlineData?.data) {
-                isAiSpeakingRef.current = true;
+                if (!isAiSpeakingRef.current) {
+                  isAiSpeakingRef.current = true;
+                  if (speechRecognitionRef.current) {
+                    try { speechRecognitionRef.current.stop(); } catch {}
+                    console.log('[LiveVoice] Paused speech recognition (AI speaking)');
+                  }
+                }
                 try {
                   const float32Data = base64ToFloat32(part.inlineData.data);
                   const buffer = audioCtx.createBuffer(1, float32Data.length, 24000);
@@ -642,7 +641,8 @@ export default function LiveScout() {
                 console.log('[LiveVoice] Got model text (thinking):', part.text.substring(0, 80));
                 const title = part.text.match(/\*\*([^*]+)\*\*/)?.[1] || '';
                 if (title) {
-                  setMessages(prev => [...prev, { role: 'system', text: `AI thinking: ${title}` }]);
+                  setMessages(prev => [...prev, { role: 'ai', text: `${title}` }]);
+                  voiceMessagesRef.current.push({ role: 'ai', text: title });
                 }
               }
             }
@@ -681,16 +681,14 @@ export default function LiveScout() {
           if (message.serverContent?.turnComplete) {
             console.log('[LiveVoice] Turn complete');
             isAiSpeakingRef.current = false;
-            setMessages(prev => {
-              const last = prev[prev.length - 1];
-              if (last && (last as any)._voiceTranscript) {
-                const updated = [...prev];
-                const cleaned = { role: last.role, text: last.text };
-                updated[updated.length - 1] = cleaned;
-                return updated;
+            setTimeout(() => {
+              if (isLiveVoiceRef.current && speechRecognitionRef.current) {
+                try {
+                  speechRecognitionRef.current.start();
+                  console.log('[LiveVoice] Resumed speech recognition (AI done)');
+                } catch {}
               }
-              return prev;
-            });
+            }, 500);
           }
         },
         onerror: (error: any) => {
