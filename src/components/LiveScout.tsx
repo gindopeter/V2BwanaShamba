@@ -587,6 +587,7 @@ export default function LiveScout() {
               if (part.text) {
                 console.log('[LiveVoice] Got text response:', part.text.substring(0, 80));
                 setMessages(prev => [...prev, { role: 'ai', text: part.text }]);
+                voiceMessagesRef.current.push({ role: 'ai', text: part.text });
               }
             }
           }
@@ -668,8 +669,13 @@ export default function LiveScout() {
   const voiceMessagesRef = useRef<{role: string, text: string}[]>([]);
 
   const saveVoiceTranscript = async () => {
-    const voiceMessages = voiceMessagesRef.current;
-    if (voiceMessages.length === 0) return;
+    const voiceMessages = [...voiceMessagesRef.current];
+    voiceMessagesRef.current = [];
+    console.log('[LiveVoice] Saving transcript, messages count:', voiceMessages.length);
+    if (voiceMessages.length === 0) {
+      console.log('[LiveVoice] No voice messages to save');
+      return;
+    }
 
     try {
       const res = await fetch('/api/voice-transcript', {
@@ -678,17 +684,23 @@ export default function LiveScout() {
         body: JSON.stringify({ messages: voiceMessages })
       });
       if (res.ok) {
-        console.log('[LiveVoice] Transcript saved successfully');
+        const data = await res.json();
+        console.log('[LiveVoice] Transcript saved successfully, conversationId:', data.conversationId);
         loadConversations();
+      } else {
+        console.error('[LiveVoice] Failed to save transcript, status:', res.status);
       }
     } catch (err) {
       console.error('[LiveVoice] Failed to save transcript:', err);
     }
-    voiceMessagesRef.current = [];
   };
 
   const stopLiveVoice = () => {
-    if (!isLiveVoiceRef.current && !processorRef.current && !audioStreamRef.current && !sessionRef.current) return;
+    const hasMessagesToSave = voiceMessagesRef.current.length > 0;
+    if (!isLiveVoiceRef.current && !processorRef.current && !audioStreamRef.current && !sessionRef.current) {
+      if (hasMessagesToSave) saveVoiceTranscript();
+      return;
+    }
     isLiveVoiceRef.current = false;
     sessionReadyRef.current = false;
     setIsLiveVoice(false);
