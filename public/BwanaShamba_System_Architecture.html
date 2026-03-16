@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BwanaShamba - System Architecture</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600;700&family=Lato:wght@300;400;700&display=swap');
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Lato', sans-serif; background: #f9f6f1; color: #002c11; padding: 40px 20px; }
+.container { max-width: 1200px; margin: 0 auto; }
+h1 { font-family: 'Instrument Sans', sans-serif; font-size: 2.2em; color: #002c11; text-align: center; margin-bottom: 8px; }
+.subtitle { text-align: center; color: #5d6c7b; font-size: 1.1em; margin-bottom: 40px; }
+.diagram { position: relative; width: 100%; min-height: 900px; }
+.user-box { text-align: center; margin-bottom: 20px; }
+.user-icon { display: inline-block; background: #035925; color: white; border-radius: 50%; width: 100px; height: 100px; line-height: 100px; font-size: 2.5em; }
+.user-label { font-weight: 700; margin-top: 8px; color: #035925; }
+.arrow-down { text-align: center; font-size: 2em; color: #5d6c7b; margin: 5px 0; }
+.arrow-right { color: #fc8e44; font-size: 1.4em; display: flex; align-items: center; justify-content: center; padding: 5px 0; }
+.arrow-right span { font-size: 0.75em; color: #5d6c7b; margin: 0 8px; }
+.row { display: flex; gap: 20px; justify-content: center; align-items: stretch; margin-bottom: 20px; flex-wrap: wrap; }
+.box { border-radius: 12px; padding: 20px; flex: 1; min-width: 280px; max-width: 500px; }
+.box h3 { font-family: 'Instrument Sans', sans-serif; font-size: 1.2em; margin-bottom: 10px; border-bottom: 2px solid rgba(0,0,0,0.1); padding-bottom: 8px; }
+.box ul { list-style: none; padding: 0; }
+.box ul li { padding: 4px 0; font-size: 0.95em; }
+.box ul li::before { content: "\2022 "; color: rgba(0,0,0,0.4); font-weight: bold; }
+.frontend { background: #d4edda; border: 2px solid #035925; }
+.frontend h3 { color: #035925; }
+.backend { background: #d6eaf8; border: 2px solid #2471a3; }
+.backend h3 { color: #2471a3; }
+.adk { background: #e8daef; border: 2px solid #7d3c98; }
+.adk h3 { color: #7d3c98; }
+.gemini-box { background: #fef9e7; border: 2px solid #d4ac0d; text-align: center; border-radius: 50px; padding: 25px; }
+.gemini-box h3 { color: #d4ac0d; border: none; }
+.voice-box { background: #fdebd0; border: 2px solid #fc8e44; text-align: center; transform: rotate(0deg); border-radius: 12px; padding: 15px; }
+.voice-box h3 { color: #e67e22; border: none; }
+.db-box { background: #fadbd8; border: 2px solid #e74c3c; }
+.db-box h3 { color: #e74c3c; }
+.env-box { background: #eaecee; border: 2px solid #5d6c7b; }
+.env-box h3 { color: #5d6c7b; }
+.weather-box { background: #d6eaf8; border: 2px solid #5dade2; text-align: center; border-radius: 50px; padding: 20px; }
+.weather-box h3 { color: #2e86c1; border: none; }
+.cloud-container { background: rgba(174, 214, 241, 0.2); border: 3px dashed #2471a3; border-radius: 20px; padding: 30px 20px 20px; margin: 20px 0; position: relative; }
+.cloud-label { position: absolute; top: -15px; left: 30px; background: #f9f6f1; padding: 0 12px; font-family: 'Instrument Sans', sans-serif; font-weight: 700; color: #2471a3; font-size: 1.1em; }
+.deployment-section { background: #fff; border: 2px solid #035925; border-radius: 12px; padding: 25px; margin-top: 30px; }
+.deployment-section h2 { font-family: 'Instrument Sans', sans-serif; color: #035925; margin-bottom: 15px; font-size: 1.4em; }
+.deploy-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+.deploy-card { background: #f0f7f0; border-radius: 10px; padding: 18px; }
+.deploy-card h4 { color: #035925; margin-bottom: 8px; font-family: 'Instrument Sans', sans-serif; }
+.deploy-card code { background: #002c11; color: #7dcea0; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
+.deploy-card p { font-size: 0.9em; color: #5d6c7b; margin-top: 6px; line-height: 1.5; }
+.transcript-section { background: #fff3e6; border: 2px solid #fc8e44; border-radius: 12px; padding: 25px; margin-top: 20px; }
+.transcript-section h3 { font-family: 'Instrument Sans', sans-serif; color: #e67e22; margin-bottom: 12px; }
+.transcript-section ol { padding-left: 20px; }
+.transcript-section ol li { padding: 4px 0; font-size: 0.9em; color: #5d6c7b; }
+.lang-section { background: #fff; border: 2px solid #7d3c98; border-radius: 12px; padding: 25px; margin-top: 30px; }
+.lang-section h2 { font-family: 'Instrument Sans', sans-serif; color: #7d3c98; margin-bottom: 15px; font-size: 1.4em; }
+.lang-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; }
+.lang-card { background: #f5eef8; border-radius: 10px; padding: 15px; text-align: center; }
+.lang-card .lang-icon { font-size: 2em; margin-bottom: 8px; }
+.lang-card h4 { color: #7d3c98; margin-bottom: 5px; }
+.lang-card p { font-size: 0.85em; color: #5d6c7b; }
+.services-section { background: #fff; border: 2px solid #2471a3; border-radius: 12px; padding: 25px; margin-top: 30px; }
+.services-section h2 { font-family: 'Instrument Sans', sans-serif; color: #2471a3; margin-bottom: 15px; font-size: 1.4em; }
+.svc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
+.svc-card { background: #eaf2f8; border-radius: 10px; padding: 15px; }
+.svc-card h4 { color: #2471a3; margin-bottom: 5px; }
+.svc-card p { font-size: 0.85em; color: #5d6c7b; line-height: 1.5; }
+.legend { display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; margin-top: 30px; padding: 15px; background: #fff; border-radius: 10px; border: 1px solid #ddd; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.85em; color: #5d6c7b; }
+.legend-swatch { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); }
+.footer { text-align: center; margin-top: 30px; color: #5d6c7b; font-size: 0.85em; }
+@media print { body { padding: 10px; } .container { max-width: 100%; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>BwanaShamba &mdash; System Architecture</h1>
+  <p class="subtitle">Farm Operations Dashboard for 5-Acre Mixed Horticulture/Maize Farm &bull; Malivundo, Pwani, Tanzania</p>
+
+  <div class="user-box">
+    <div class="user-icon">&#x1F468;&#x200D;&#x1F33E;</div>
+    <div class="user-label">User (Mobile / Desktop Browser)</div>
+  </div>
+  <div class="arrow-down">&#x25BC;</div>
+
+  <div class="row">
+    <div class="box frontend">
+      <h3>Frontend &mdash; React 19 + Vite + Tailwind CSS</h3>
+      <ul>
+        <li>Dashboard with Farm Overview</li>
+        <li>Interactive Farm Map (Zones)</li>
+        <li>AI Chat (Multi-Agent)</li>
+        <li>Live Scout (Camera + Voice)</li>
+        <li>Zone Management (CRUD)</li>
+        <li>Browser SpeechRecognition API (captures user + AI speech)</li>
+        <li>Responsive &amp; Multilingual (EN/SW)</li>
+      </ul>
+    </div>
+    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-width:120px;">
+      <div class="arrow-right">&larr; <span>Direct: Live Voice + Crop Analysis</span> &rarr;</div>
+    </div>
+    <div class="box gemini-box" style="max-width:350px;">
+      <h3>Google Gemini 2.5 Flash API</h3>
+      <p style="color:#5d6c7b;">(AI Brain)</p>
+      <p style="font-size:0.85em; color:#5d6c7b; margin-top:8px;">Native Audio Model for voice &bull; Vision for crop analysis &bull; Text for chat</p>
+    </div>
+  </div>
+
+  <div class="cloud-container">
+    <span class="cloud-label">&#x2601;&#xFE0F; Google Cloud Run Container</span>
+
+    <div class="row">
+      <div class="box backend">
+        <h3>Express.js Server (Port 8080)</h3>
+        <ul>
+          <li>REST API endpoints</li>
+          <li>Session Auth (bcrypt)</li>
+          <li>SSE Streaming Chat</li>
+          <li>Irrigation Engine</li>
+          <li>Static File Serving</li>
+          <li>Voice Transcript API</li>
+        </ul>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-width:80px;">
+        <div class="arrow-right">&larr; <span>HTTP / SSE</span> &rarr;</div>
+      </div>
+      <div class="box adk">
+        <h3>ADK Agent Service (FastAPI/Uvicorn Port 8001)</h3>
+        <ul>
+          <li>Farm Supervisor (Router Agent)</li>
+          <li>Pest Scout Agent</li>
+          <li>Irrigation Agent</li>
+          <li>Task Planner Agent</li>
+          <li>Market Agent</li>
+        </ul>
+      </div>
+    </div>
+
+    <div style="display:flex; align-items:center; justify-content:center; margin:10px 0;">
+      <div class="arrow-right"><span>API Key</span> &rarr;</div>
+    </div>
+
+    <div class="row">
+      <div class="box voice-box" style="max-width:280px;">
+        <h3>Live Voice WebSocket</h3>
+        <p style="font-size:0.9em; color:#5d6c7b;">Native Audio + Speech-to-Text</p>
+      </div>
+    </div>
+
+    <div class="arrow-down">&#x25BC;</div>
+
+    <div class="row">
+      <div class="box db-box">
+        <h3>Cloud SQL &mdash; PostgreSQL 18</h3>
+        <ul>
+          <li>Users &amp; Auth</li>
+          <li>Zones &amp; Crops</li>
+          <li>Tasks &amp; Logs</li>
+          <li>Sessions</li>
+          <li>Voice Transcripts</li>
+          <li>Conversation History</li>
+        </ul>
+      </div>
+      <div class="box env-box">
+        <h3>&#x1F510; Environment Variables</h3>
+        <ul>
+          <li>GEMINI_API_KEY</li>
+          <li>DATABASE_URL</li>
+          <li>SESSION_SECRET</li>
+          <li>ADK_INTERNAL_TOKEN</li>
+          <li>DB_SSL=false</li>
+        </ul>
+      </div>
+      <div class="box weather-box" style="max-width:280px;">
+        <h3>Open-Meteo API</h3>
+        <p style="color:#5d6c7b;">Weather Forecast<br>Malivundo (-7.1, 38.7)<br><em style="font-size:0.85em;">No API key required</em></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="transcript-section">
+    <h3>Voice Transcript Flow</h3>
+    <ol>
+      <li><strong>User speaks</strong> &rarr; Browser SpeechRecognition API transcribes to text (shown on right side)</li>
+      <li><strong>Audio streams</strong> to Gemini Native Audio via WebSocket &rarr; AI responds with audio + thinking text</li>
+      <li><strong>AI audio plays</strong> through speaker &rarr; SpeechRecognition captures AI spoken words (shown on left side)</li>
+      <li><strong>Timing logic</strong> (<code>isAiSpeaking</code> + <code>aiJustFinished</code>) separates user vs AI transcriptions</li>
+      <li><strong>On session end</strong> &rarr; POST /api/voice-transcript saves both sides to Cloud SQL</li>
+      <li><strong>Transcript appears</strong> in Conversation History sidebar for later review</li>
+    </ol>
+  </div>
+
+  <div class="lang-section">
+    <h2>Languages &amp; Frameworks Used</h2>
+    <div class="lang-grid">
+      <div class="lang-card">
+        <div class="lang-icon">&#x1F7E6;</div>
+        <h4>TypeScript</h4>
+        <p>Primary language for both frontend (React 19) and backend (Express.js server)</p>
+      </div>
+      <div class="lang-card">
+        <div class="lang-icon">&#x1F40D;</div>
+        <h4>Python</h4>
+        <p>ADK Agent Service using Google ADK framework, FastAPI, and Uvicorn</p>
+      </div>
+      <div class="lang-card">
+        <div class="lang-icon">&#x1F433;</div>
+        <h4>Docker</h4>
+        <p>Multi-stage Dockerfile for containerized deployment on Cloud Run</p>
+      </div>
+      <div class="lang-card">
+        <div class="lang-icon">&#x2699;&#xFE0F;</div>
+        <h4>YAML + Bash</h4>
+        <p>Cloud Build config (cloudbuild.yaml) and startup script (docker-start.sh)</p>
+      </div>
+      <div class="lang-card">
+        <div class="lang-icon">&#x1F3A8;</div>
+        <h4>CSS / Tailwind</h4>
+        <p>Tailwind CSS for responsive UI styling with custom color palette</p>
+      </div>
+      <div class="lang-card">
+        <div class="lang-icon">&#x1F4E6;</div>
+        <h4>SQL</h4>
+        <p>PostgreSQL schema for Cloud SQL, with SQLite fallback for development</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="services-section">
+    <h2>Google Cloud Services Used for Deployment</h2>
+    <div class="svc-grid">
+      <div class="svc-card">
+        <h4>&#x2601;&#xFE0F; Google Cloud Run</h4>
+        <p>Serverless container platform that hosts the entire application. Runs the Docker container with both Express.js and ADK services. Region: europe-west1. Scales from 0 to 3 instances.</p>
+      </div>
+      <div class="svc-card">
+        <h4>&#x1F528; Google Cloud Build</h4>
+        <p>CI/CD service that automates the build and deployment pipeline. Builds the Docker image, pushes to Container Registry, and deploys to Cloud Run &mdash; all defined in <code>cloudbuild.yaml</code>.</p>
+      </div>
+      <div class="svc-card">
+        <h4>&#x1F4E6; Google Container Registry (GCR)</h4>
+        <p>Stores the built Docker images at <code>gcr.io/$PROJECT_ID/bwanashamba</code>. Cloud Build pushes images here before Cloud Run deploys them.</p>
+      </div>
+      <div class="svc-card">
+        <h4>&#x1F5C4;&#xFE0F; Google Cloud SQL</h4>
+        <p>Managed PostgreSQL 18 database instance. Connected to Cloud Run via Cloud SQL Auth Proxy. Instance: <code>bwanashamba:europe-west1:bwanashamba-db</code>.</p>
+      </div>
+      <div class="svc-card">
+        <h4>&#x1F9E0; Google Gemini API</h4>
+        <p>AI/ML service providing Gemini 2.5 Flash for text chat, native audio for live voice, and vision capabilities for crop image analysis.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="deployment-section">
+    <h2>Cloud Deployment Automation Files</h2>
+    <p style="color:#5d6c7b; margin-bottom:15px;">Yes, the application includes infrastructure-as-code files for automated deployment. All three files are committed and pushed to GitHub.</p>
+    <div class="deploy-grid">
+      <div class="deploy-card">
+        <h4>Dockerfile</h4>
+        <p>Multi-stage build: Stage 1 builds the React frontend with Vite. Stage 2 creates the production image with Node.js 22, Python 3, and all dependencies. Exposes port 8080.</p>
+      </div>
+      <div class="deploy-card">
+        <h4>cloudbuild.yaml</h4>
+        <p>Google Cloud Build pipeline configuration. Three steps: (1) Build Docker image, (2) Push to GCR, (3) Deploy to Cloud Run with all environment variables, Cloud SQL connection, and resource limits (1 CPU, 1Gi memory).</p>
+      </div>
+      <div class="deploy-card">
+        <h4>docker-start.sh</h4>
+        <p>Startup script that runs inside the container. Starts the Python ADK Agent Service on port 8001 in the background, waits 3 seconds, then starts the Node.js Express server on port 8080.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:#d4edda;"></div> Frontend (React)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#d6eaf8;"></div> Backend (Express)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#e8daef;"></div> ADK Agents (Python)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#fef9e7;"></div> Gemini AI</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#fdebd0;"></div> Voice/Audio</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#fadbd8;"></div> Database</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#eaecee;"></div> Config/Secrets</div>
+  </div>
+
+  <div class="footer">
+    <p>BwanaShamba &copy; 2025 &bull; System Architecture Document &bull; Generated March 2026</p>
+  </div>
+</div>
+</body>
+</html>
