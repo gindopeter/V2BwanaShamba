@@ -687,7 +687,7 @@ export default function LiveScout() {
             aiJustFinishedRef.current = true;
             setTimeout(() => {
               aiJustFinishedRef.current = false;
-            }, 3000);
+            }, 1500);
           }
         },
         onerror: (error: any) => {
