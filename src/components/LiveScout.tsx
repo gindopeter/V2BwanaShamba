@@ -628,12 +628,7 @@ export default function LiveScout() {
                   playSource.onended = () => {
                     activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== playSource);
                     if (activeSourcesRef.current.length === 0) {
-                      console.log('[LiveVoice] All AI audio buffers finished playing');
                       isAiSpeakingRef.current = false;
-                      aiJustFinishedRef.current = true;
-                      setTimeout(() => {
-                        aiJustFinishedRef.current = false;
-                      }, 3000);
                     }
                   };
 
@@ -688,6 +683,11 @@ export default function LiveScout() {
 
           if (message.serverContent?.turnComplete) {
             console.log('[LiveVoice] Turn complete');
+            isAiSpeakingRef.current = false;
+            aiJustFinishedRef.current = true;
+            setTimeout(() => {
+              aiJustFinishedRef.current = false;
+            }, 3000);
           }
         },
         onerror: (error: any) => {
