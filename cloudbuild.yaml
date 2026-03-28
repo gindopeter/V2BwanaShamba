@@ -1,0 +1,48 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/bwanashamba', '.']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/bwanashamba']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'bwanashamba'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/bwanashamba'
+      - '--region'
+      - 'europe-west1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--port'
+      - '8080'
+      - '--memory'
+      - '1Gi'
+      - '--cpu'
+      - '1'
+      - '--min-instances'
+      - '0'
+      - '--max-instances'
+      - '3'
+      - '--timeout'
+      - '300'
+      - '--add-cloudsql-instances'
+      - '${_CLOUD_SQL_INSTANCE}'
+      - '--set-env-vars'
+      - 'NODE_ENV=production,ADK_PORT=8001,GOOGLE_GENAI_USE_VERTEXAI=false,DB_SSL=false,GEMINI_API_KEY=${_GEMINI_API_KEY},DATABASE_URL=${_DATABASE_URL},SESSION_SECRET=${_SESSION_SECRET},ADK_INTERNAL_TOKEN=${_ADK_INTERNAL_TOKEN}'
+
+substitutions:
+  _CLOUD_SQL_INSTANCE: 'bwanashamba:europe-west1:bwanashamba-db'
+  _GEMINI_API_KEY: ''
+  _DATABASE_URL: ''
+  _SESSION_SECRET: '43mMiALzi_BBQO-XNlxUxZMGd-Vb_TN2NQMxCt_yXdA'
+  _ADK_INTERNAL_TOKEN: 'EUvfBc7SAYU56eOODdnvBis_SCgiNcvrcjDEhyrcX0o'
+
+images:
+  - 'gcr.io/$PROJECT_ID/bwanashamba'
+
+timeout: '1200s'
