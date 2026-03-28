@@ -1,0 +1,147 @@
+import { GoogleGenAI } from "@google/genai";
+import { dbAll } from "../db.js";
+import { getDaysToHarvest, getGrowthStage } from "../constants/crops.js";
+
+/**
+ * Builds a rich farm-context string for inclusion in AI prompts.
+ * Uses the database state at call time.
+ *
+ * NOTE: Consider caching this for 30–60s in high-traffic scenarios.
+ * memoizee is already in devDependencies and works well here.
+ */
+export async function getFarmContext(): Promise<string> {
+  const zones = await dbAll("SELECT * FROM zones");
+  const tasks = await dbAll(
+    "SELECT t.*, z.name AS zone_name FROM tasks t JOIN zones z ON t.zone_id = z.id ORDER BY t.scheduled_time DESC LIMIT 20"
+  );
+  const logs = await dbAll(
+    "SELECT l.*, z.name AS zone_name FROM logs l LEFT JOIN zones z ON l.zone_id = z.id ORDER BY l.timestamp DESC LIMIT 10"
+  );
+
+  const today = new Date();
+
+  const zoneDetails = zones
+    .map((z: any) => {
+      const plantingDate = new Date(z.planting_date);
+      const growthDay = Math.ceil(
+        Math.abs(today.getTime() - plantingDate.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      const maxDays = getDaysToHarvest(z.crop_type);
+      const stage = getGrowthStage(growthDay, maxDays);
+      return `- ${z.name}: ${z.crop_type}, ${z.area_size} acres, planted ${z.planting_date}, day ${growthDay}/${maxDays} (${stage} stage), irrigation: ${z.irrigation_status}, status: ${z.status}, expected yield: ${z.expected_yield_kg}kg, actual yield: ${z.actual_yield_kg}kg`;
+    })
+    .join("\n");
+
+  const taskDetails = tasks
+    .map(
+      (t: any) =>
+        `- [${t.status}] ${t.task_type} for ${t.zone_name} at ${t.scheduled_time} (${t.duration_minutes}min) - ${t.reasoning || "No reason"}`
+    )
+    .join("\n");
+
+  const logDetails = logs
+    .map(
+      (l: any) =>
+        `- [${l.severity}] ${l.zone_name || "System"}: ${l.message} (${l.timestamp})`
+    )
+    .join("\n");
+
+  return `
+=== CURRENT FARM DATA ===
+Date: ${today.toISOString().split("T")[0]}
+
+ZONES:
+${zoneDetails || "No zones configured"}
+
+RECENT TASKS (last 20):
+${taskDetails || "No tasks"}
+
+RECENT LOGS (last 10):
+${logDetails || "No logs"}
+=== END FARM DATA ===`;
+}
+
+/**
+ * Calls Gemini directly (fallback when ADK is unavailable).
+ * The API key never leaves the server.
+ */
+export async function chatViaGeminiDirect(
+  message: string,
+  contents: any[],
+  image?: string,
+  mimeType?: string
+): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("Gemini API key not configured");
+
+  const ai = new GoogleGenAI({ apiKey });
+  const farmContext = await getFarmContext();
+
+  const systemInstruction = `You are 'BwanaShamba' (AI Farm Assistant) for a 5-acre farm in Malivundo, Pwani, Tanzania growing horticulture crops (tomatoes, onions, peppers, cabbage, spinach, cucumbers, watermelon, eggplant, carrots, lettuce, okra, green beans) and maize.
+
+You help farmers with questions about all these crops — soil, pest control, irrigation, fertigation, harvest timing, and market prices.
+
+You are fluent in both English and Kiswahili. IMPORTANT: Always respond in the same language the user is currently using. If the user writes in Kiswahili, respond entirely in Kiswahili. If the user writes in English, respond in English. If the user switches languages mid-conversation, switch with them immediately.
+
+Be concise, practical, and helpful. Use the live farm data below to give specific, accurate answers about zones, tasks, and conditions.
+
+${farmContext}
+
+Current Date: ${new Date().toISOString()}`;
+
+  if (image) {
+    const lastContent = contents[contents.length - 1];
+    if (lastContent) {
+      lastContent.parts.unshift({
+        inlineData: { mimeType: mimeType || "image/jpeg", data: image },
+      });
+    }
+  }
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents,
+    config: { systemInstruction },
+  });
+
+  return response.text || "I could not generate a response.";
+}
+
+/**
+ * Returns a short-lived ephemeral token for use by the frontend Live API
+ * (voice/camera sessions). This replaces the old /api/gemini-session endpoint
+ * that exposed the raw API key.
+ *
+ * The ephemeral token is valid for ~60 seconds and scoped to the Live model only.
+ *
+ * See: https://ai.google.dev/gemini-api/docs/ephemeral-tokens
+ */
+export async function createEphemeralToken(): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("Gemini API key not configured");
+
+  // Google's ephemeral token endpoint
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/ephemeralTokens?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "models/gemini-2.5-flash",
+        config: {
+          response_modalities: ["AUDIO"],
+          // Token expires after 60 seconds — enough to establish a Live connection
+        },
+        ttl: "60s",
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Failed to create ephemeral token: ${response.status} ${err}`);
+  }
+
+  const data = (await response.json()) as any;
+  return data.token as string;
+}

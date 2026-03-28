@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { dbAll } from '../db.ts';
+import { getDaysToHarvest, getGrowthStage } from '../constants/crops.ts';
 
 /**
  * Builds a snapshot of the current farm state to inject into AI prompts.
@@ -16,23 +17,14 @@ export async function getFarmContext(userId?: number): Promise<string> {
   );
 
   const today = new Date();
-  const cropDays: Record<string, number> = {
-    Tomato: 120, Onion: 150, Pepper: 130, Cabbage: 100, Spinach: 50,
-    Cucumber: 70, Watermelon: 90, Eggplant: 130, Carrot: 90, Lettuce: 65,
-    Okra: 60, 'Green Bean': 60, Maize: 120,
-  };
 
   const zoneDetails = zones
     .map((z: any) => {
       const plantingDate = new Date(z.planting_date);
       const growthDay = Math.ceil(Math.abs(today.getTime() - plantingDate.getTime()) / 86400000);
-      const maxDays = cropDays[z.crop_type] || 120;
-      const stage =
-        growthDay <= maxDays * 0.25 ? 'Seedling'
-        : growthDay <= maxDays * 0.5 ? 'Vegetative'
-        : growthDay <= maxDays * 0.75 ? 'Flowering'
-        : 'Harvest';
-      return `- ${z.name}: ${z.crop_type}, ${z.area_size} acres, planted ${z.planting_date}, day ${growthDay}/${maxDays} (${stage} stage), status: ${z.status}, expected yield: ${z.expected_yield_kg}kg, actual yield: ${z.actual_yield_kg}kg`;
+      const maxDays = getDaysToHarvest(z.crop_type);
+      const stage = getGrowthStage(growthDay, maxDays);
+      return `- ${z.name}: ${z.crop_type}, ${z.area_size} acres, planted ${z.planting_date}, day ${growthDay}/${maxDays} (${stage} stage), irrigation: ${z.irrigation_status}, status: ${z.status}, expected yield: ${z.expected_yield_kg}kg, actual yield: ${z.actual_yield_kg}kg`;
     })
     .join('\n');
 
