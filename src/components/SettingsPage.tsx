@@ -1,27 +1,29 @@
 import { useState, useEffect } from 'react';
-import { Lock, User, Shield, Trash2, Plus, Check, AlertCircle, Eye, EyeOff, UserPlus, Edit2, X, UserX, UserCheck } from 'lucide-react';
+import { Lock, User, Shield, Trash2, Plus, Check, AlertCircle, Eye, EyeOff, UserPlus, Edit2, X, UserX, UserCheck, Globe } from 'lucide-react';
 import type { AuthUser } from '../App';
+import { type Language, t, TANZANIA_REGIONS } from '../lib/i18n';
 
 interface SettingsPageProps {
   user: AuthUser;
   onUserUpdate: (user: AuthUser) => void;
+  lang?: Language;
 }
 
-export default function SettingsPage({ user, onUserUpdate }: SettingsPageProps) {
+export default function SettingsPage({ user, onUserUpdate, lang = 'en' }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<'profile' | 'password' | 'users'>('profile');
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex gap-2 bg-white border border-[#002c11]/10 rounded-xl p-1.5 shadow-sm">
-        <TabButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<User size={16} />} label="Profile" />
-        <TabButton active={activeTab === 'password'} onClick={() => setActiveTab('password')} icon={<Lock size={16} />} label="Password" />
+      <div className="flex gap-2 bg-white border border-[#002c11]/10 rounded-xl p-1.5 shadow-sm flex-wrap">
+        <TabButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<User size={16} />} label={t(lang, 'profile')} />
+        <TabButton active={activeTab === 'password'} onClick={() => setActiveTab('password')} icon={<Lock size={16} />} label={t(lang, 'changePassword')} />
         {user.role === 'admin' && (
-          <TabButton active={activeTab === 'users'} onClick={() => setActiveTab('users')} icon={<Shield size={16} />} label="Manage Users" />
+          <TabButton active={activeTab === 'users'} onClick={() => setActiveTab('users')} icon={<Shield size={16} />} label={t(lang, 'manageUsers')} />
         )}
       </div>
 
-      {activeTab === 'profile' && <ProfileSection user={user} onUserUpdate={onUserUpdate} />}
-      {activeTab === 'password' && <PasswordSection />}
+      {activeTab === 'profile' && <ProfileSection user={user} onUserUpdate={onUserUpdate} lang={lang} />}
+      {activeTab === 'password' && <PasswordSection lang={lang} />}
       {activeTab === 'users' && user.role === 'admin' && <UsersSection currentUserId={user.id} />}
     </div>
   );
@@ -43,9 +45,13 @@ function TabButton({ active, onClick, icon, label }: { active: boolean; onClick:
   );
 }
 
-function ProfileSection({ user, onUserUpdate }: { user: AuthUser; onUserUpdate: (u: AuthUser) => void }) {
+function ProfileSection({ user, onUserUpdate, lang = 'en' }: { user: AuthUser; onUserUpdate: (u: AuthUser) => void; lang?: Language }) {
   const [firstName, setFirstName] = useState(user.first_name || '');
   const [lastName, setLastName] = useState(user.last_name || '');
+  const [language, setLanguage] = useState<Language>((user.language as Language) || 'en');
+  const [region, setRegion] = useState(user.region || '');
+  const [district, setDistrict] = useState(user.district || '');
+  const [farmSize, setFarmSize] = useState(user.farm_size_acres ? String(user.farm_size_acres) : '');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -58,59 +64,143 @@ function ProfileSection({ user, onUserUpdate }: { user: AuthUser; onUserUpdate: 
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ first_name: firstName, last_name: lastName }),
+        body: JSON.stringify({
+          first_name: firstName,
+          last_name: lastName,
+          language,
+          region: region || null,
+          district: district || null,
+          farm_size_acres: farmSize ? parseFloat(farmSize) : null,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setMessage({ type: 'error', text: data.message || 'Failed to update profile' });
+        setMessage({ type: 'error', text: data.message || (lang === 'sw' ? 'Imeshindwa kusasisha wasifu' : 'Failed to update profile') });
         return;
       }
       onUserUpdate(data);
-      setMessage({ type: 'success', text: 'Profile updated successfully' });
+      setMessage({ type: 'success', text: lang === 'sw' ? 'Wasifu umesasishwa' : 'Profile updated successfully' });
     } catch {
-      setMessage({ type: 'error', text: 'Connection error' });
+      setMessage({ type: 'error', text: lang === 'sw' ? 'Hitilafu ya muunganisho' : 'Connection error' });
     } finally {
       setSaving(false);
     }
   };
 
+  const inputClass = "w-full px-4 py-3 border border-[#002c11]/10 rounded-xl text-[#002c11] focus:ring-2 focus:ring-[#035925]/30 focus:border-[#035925] transition-all bg-white";
+
   return (
     <div className="bg-white border border-[#002c11]/10 rounded-2xl shadow-sm p-6">
-      <h3 className="text-lg font-bold text-[#002c11] mb-1">Profile Information</h3>
-      <p className="text-sm text-[#5d6c7b] mb-6">Update your name and personal details.</p>
+      <h3 className="text-lg font-bold text-[#002c11] mb-1">{t(lang, 'profile')}</h3>
+      <p className="text-sm text-[#5d6c7b] mb-6">{lang === 'sw' ? 'Sasisha jina lako na maelezo ya kibinafsi.' : 'Update your name and personal details.'}</p>
 
       <form onSubmit={handleSave} className="space-y-5">
-        <div>
-          <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">Email</label>
-          <input
-            type="email"
-            value={user.email}
-            disabled
-            className="w-full px-4 py-3 bg-[#f9f6f1] border border-[#002c11]/10 rounded-xl text-[#5d6c7b] cursor-not-allowed"
-          />
-          <p className="text-xs text-[#5d6c7b]/60 mt-1">Contact your administrator to change your email.</p>
-        </div>
+        {user.email && (
+          <div>
+            <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">{t(lang, 'email')}</label>
+            <input
+              type="email"
+              value={user.email}
+              disabled
+              className="w-full px-4 py-3 bg-[#f9f6f1] border border-[#002c11]/10 rounded-xl text-[#5d6c7b] cursor-not-allowed"
+            />
+          </div>
+        )}
+        {user.phone_number && (
+          <div>
+            <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">{t(lang, 'phoneNumber')}</label>
+            <input
+              type="tel"
+              value={user.phone_number}
+              disabled
+              className="w-full px-4 py-3 bg-[#f9f6f1] border border-[#002c11]/10 rounded-xl text-[#5d6c7b] cursor-not-allowed"
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">First Name</label>
+            <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">{t(lang, 'firstName')}</label>
             <input
               type="text"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
-              className="w-full px-4 py-3 border border-[#002c11]/10 rounded-xl text-[#002c11] focus:ring-2 focus:ring-[#035925]/30 focus:border-[#035925] transition-all"
-              placeholder="Enter first name"
+              className={inputClass}
+              placeholder={lang === 'sw' ? 'Jina la kwanza' : 'First name'}
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">Last Name</label>
+            <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">{t(lang, 'lastName')}</label>
             <input
               type="text"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
-              className="w-full px-4 py-3 border border-[#002c11]/10 rounded-xl text-[#002c11] focus:ring-2 focus:ring-[#035925]/30 focus:border-[#035925] transition-all"
-              placeholder="Enter last name"
+              className={inputClass}
+              placeholder={lang === 'sw' ? 'Jina la mwisho' : 'Last name'}
             />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">{t(lang, 'languagePref')}</label>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setLanguage('en')}
+              className={`flex-1 py-3 rounded-xl border-2 font-bold text-sm transition-all ${language === 'en' ? 'bg-[#035925] text-white border-[#035925]' : 'border-[#002c11]/10 text-[#5d6c7b] hover:border-[#035925]/30'}`}
+            >
+              🇬🇧 English
+            </button>
+            <button
+              type="button"
+              onClick={() => setLanguage('sw')}
+              className={`flex-1 py-3 rounded-xl border-2 font-bold text-sm transition-all ${language === 'sw' ? 'bg-[#035925] text-white border-[#035925]' : 'border-[#002c11]/10 text-[#5d6c7b] hover:border-[#035925]/30'}`}
+            >
+              🇹🇿 Kiswahili
+            </button>
+          </div>
+        </div>
+
+        <div className="pt-2 border-t border-[#002c11]/5">
+          <p className="text-xs font-bold text-[#002c11]/40 uppercase tracking-wider mb-3">{t(lang, 'farmInfo')}</p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">{t(lang, 'region')}</label>
+              <select
+                value={region}
+                onChange={e => setRegion(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">{t(lang, 'selectRegion')}</option>
+                {TANZANIA_REGIONS.map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">{t(lang, 'district')}</label>
+                <input
+                  type="text"
+                  value={district}
+                  onChange={e => setDistrict(e.target.value)}
+                  className={inputClass}
+                  placeholder={t(lang, 'enterDistrict')}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#002c11]/80 mb-1.5">{t(lang, 'farmSize')}</label>
+                <input
+                  type="number"
+                  value={farmSize}
+                  onChange={e => setFarmSize(e.target.value)}
+                  className={inputClass}
+                  placeholder="e.g. 5"
+                  min="0"
+                  step="0.1"
+                />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -121,14 +211,14 @@ function ProfileSection({ user, onUserUpdate }: { user: AuthUser; onUserUpdate: 
           disabled={saving}
           className="flex items-center gap-2 bg-[#035925] hover:bg-[#002c11] text-white px-6 py-3 rounded-xl font-medium shadow-sm transition-all active:scale-95 disabled:opacity-70"
         >
-          {saving ? 'Saving...' : <><Check size={18} /> Save Changes</>}
+          {saving ? (lang === 'sw' ? 'Inahifadhi...' : 'Saving...') : <><Check size={18} /> {t(lang, 'saveChanges')}</>}
         </button>
       </form>
     </div>
   );
 }
 
-function PasswordSection() {
+function PasswordSection({ lang = 'en' }: { lang?: Language }) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');

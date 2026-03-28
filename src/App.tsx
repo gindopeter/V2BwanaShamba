@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import Layout from './components/Layout';
 import Login from './components/Login';
-import WeatherWidget from './components/WeatherWidget';
 import ZoneCard from './components/ZoneCard';
 import NewTaskModal from './components/NewTaskModal';
 import LiveScout from './components/LiveScout';
@@ -10,14 +9,20 @@ import ActionQueue from './components/ActionQueue';
 import SettingsPage from './components/SettingsPage';
 import ZoneModal from './components/ZoneModal';
 import { fetchZones, fetchTasks, runEngineChecks, updateTaskStatus, createZone, updateZone, deleteZone, Zone, Task } from './lib/api';
-import { RefreshCw, Plus, Loader2, ArrowLeft, MessageSquare, ChevronRight, Droplets } from 'lucide-react';
+import { RefreshCw, Plus, Loader2, ArrowLeft, MessageSquare, ChevronRight, BarChart2 } from 'lucide-react';
+import { type Language, t } from './lib/i18n';
 
 export interface AuthUser {
   id: number;
-  email: string;
+  email: string | null;
+  phone_number: string | null;
   first_name: string | null;
   last_name: string | null;
   role: string;
+  language?: Language;
+  region?: string;
+  district?: string;
+  farm_size_acres?: number;
 }
 
 export default function App() {
@@ -31,6 +36,8 @@ export default function App() {
   const [showZoneModal, setShowZoneModal] = useState(false);
   const [editingZone, setEditingZone] = useState<Zone | null>(null);
   const [currentView, setCurrentView] = useState('dashboard');
+
+  const lang: Language = (user?.language as Language) || 'en';
 
   useEffect(() => {
     fetch('/api/auth/user', { credentials: 'include' })
@@ -49,13 +56,9 @@ export default function App() {
       const [zonesData, tasksData] = await Promise.all([fetchZones(), fetchTasks()]);
       setZones(zonesData);
       setTasks(tasksData);
-      
+
       const engineData = await runEngineChecks();
       setWeather(engineData.weather);
-      if (engineData.generatedTasks.length > 0) {
-        const newTasksData = await fetchTasks();
-        setTasks(newTasksData);
-      }
     } catch (e) {
       console.error("Failed to load data", e);
     } finally {
@@ -130,8 +133,26 @@ export default function App() {
     return taskDate === new Date().toDateString() && t.status === 'Pending';
   });
 
-  const detailViews = ['tasks-detail', 'zones-detail', 'weather-detail', 'water-detail', 'water-report'];
+  const detailViews = ['tasks-detail', 'zones-detail', 'weather-detail', 'reports'];
   const isDetailView = detailViews.includes(currentView);
+
+  const locationLabel = user.district && user.region
+    ? `${user.district}, ${user.region}`
+    : user.region
+    ? user.region
+    : 'Tanzania';
+
+  const farmSizeLabel = user.farm_size_acres ? `${user.farm_size_acres} ${lang === 'sw' ? 'Ekari' : 'Acres'}` : '';
+
+  const viewTitles: Record<string, string> = {
+    dashboard: t(lang, 'farmOverview'),
+    map: lang === 'sw' ? 'Ramani ya Shamba' : 'The Farm',
+    settings: t(lang, 'settings'),
+    'tasks-detail': t(lang, 'pendingTasks'),
+    'zones-detail': t(lang, 'activZones'),
+    'weather-detail': lang === 'sw' ? 'Hali ya Hewa' : 'Weather Forecast',
+    reports: t(lang, 'reports'),
+  };
 
   return (
     <Layout currentView={currentView} onNavigate={setCurrentView} user={user} onLogout={handleLogout}>
@@ -145,22 +166,17 @@ export default function App() {
             )}
             <div>
               <h2 className="text-lg font-black text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
-                {currentView === 'dashboard' && 'Farm Overview'}
-                {currentView === 'map' && 'The Farm'}
-                {currentView === 'settings' && 'Settings'}
-                {currentView === 'tasks-detail' && 'Pending Tasks'}
-                {currentView === 'zones-detail' && 'Active Zones'}
-                {currentView === 'weather-detail' && 'Weather Forecast'}
-                {currentView === 'water-detail' && 'Water Usage'}
-                {currentView === 'water-report' && 'Water Usage Report'}
+                {viewTitles[currentView] || t(lang, 'farmOverview')}
               </h2>
-              <p className="text-[11px] text-[#5d6c7b]">Malivundo, Pwani · 5 Acres · {zones.length} Active Zones</p>
+              <p className="text-[11px] text-[#5d6c7b]">
+                {locationLabel}{farmSizeLabel ? ` · ${farmSizeLabel}` : ''} · {zones.length} {t(lang, 'activZones')}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-2 bg-[#035925]/5 px-3 py-1.5 rounded-full">
               <span className="w-2 h-2 rounded-full bg-[#035925] animate-pulse"></span>
-              <span className="text-[11px] font-bold text-[#035925]">All Systems Online</span>
+              <span className="text-[11px] font-bold text-[#035925]">{t(lang, 'allSystems')}</span>
             </div>
             {currentView === 'dashboard' && (
               <>
@@ -176,7 +192,7 @@ export default function App() {
                   style={{ fontFamily: "'Instrument Sans', sans-serif" }}
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  New Task
+                  {lang === 'sw' ? 'Kazi Mpya' : 'New Task'}
                 </button>
               </>
             )}
@@ -187,12 +203,32 @@ export default function App() {
       <div className={currentView === 'assistant' ? 'h-full' : 'p-6 lg:p-8 max-w-[1100px] mx-auto'}>
         {currentView === 'dashboard' && (
           <div className="space-y-6">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
               {[
-                { label: 'Active Zones', value: String(zones.length || '0'), sub: zones.map(z => z.crop_type).join(' & ') || 'No zones', icon: '🌱', borderColor: '#035925', view: 'zones-detail' },
-                { label: 'Water Usage', value: '1,240L', sub: '↓ 12% vs yesterday', icon: '💧', borderColor: '#0082f3', view: 'water-detail' },
-                { label: 'Pending Tasks', value: String(pendingCount), sub: `${tasks.filter(t => t.status === 'Pending' && t.task_type === 'Irrigation').length} irrigation`, icon: '⚡', borderColor: '#fc8e44', view: 'tasks-detail' },
-                { label: 'Temperature', value: weather ? `${Math.round(weather.current?.temp || 28)}°C` : '28°C', sub: weather?.current?.condition || 'Loading...', icon: '☀️', borderColor: '#f5e197', view: 'weather-detail' },
+                {
+                  label: t(lang, 'activZones'),
+                  value: String(zones.length || '0'),
+                  sub: zones.map(z => z.crop_type).join(' · ') || (lang === 'sw' ? 'Hakuna maeneo' : 'No zones'),
+                  icon: '🌱',
+                  borderColor: '#035925',
+                  view: 'zones-detail'
+                },
+                {
+                  label: t(lang, 'pendingTasks'),
+                  value: String(pendingCount),
+                  sub: `${tasks.filter(t => t.status === 'Pending' && t.task_type === 'Scouting').length} ${lang === 'sw' ? 'ukaguzi' : 'scouting'}`,
+                  icon: '⚡',
+                  borderColor: '#fc8e44',
+                  view: 'tasks-detail'
+                },
+                {
+                  label: t(lang, 'temperature'),
+                  value: weather ? `${Math.round(weather.current?.temp || 28)}°C` : '28°C',
+                  sub: weather?.current?.condition || (lang === 'sw' ? 'Inapakia...' : 'Loading...'),
+                  icon: '☀️',
+                  borderColor: '#f5e197',
+                  view: 'weather-detail'
+                },
               ].map((s) => (
                 <button
                   key={s.label}
@@ -219,36 +255,46 @@ export default function App() {
                 <MessageSquare className="w-6 h-6 text-white" />
               </div>
               <div className="text-left flex-1">
-                <p className="text-white font-black text-sm" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>Ongea na BwanaShamba</p>
-                <p className="text-white/50 text-xs">Talk to your AI farm assistant — text, voice, or camera</p>
+                <p className="text-white font-black text-sm" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
+                  {lang === 'sw' ? 'Ongea na BwanaShamba' : 'Talk to BwanaShamba'}
+                </p>
+                <p className="text-white/50 text-xs">
+                  {lang === 'sw' ? 'Msaidizi wa AI wa shamba lako — maandishi, sauti, au kamera' : 'Talk to your AI farm assistant — text, voice, or camera'}
+                </p>
               </div>
               <ChevronRight className="w-5 h-5 text-white/40 group-hover:text-white/80 transition-colors shrink-0" />
             </button>
 
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-              <div className="xl:col-span-8 space-y-4">
+              <div className="xl:col-span-12 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <h3 className="text-xs font-black text-[#002c11] uppercase tracking-[0.15em]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>Active Zones</h3>
+                    <h3 className="text-xs font-black text-[#002c11] uppercase tracking-[0.15em]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
+                      {t(lang, 'activZones')}
+                    </h3>
                     <div className="h-[2px] w-12 bg-[#fc8e44] rounded-full"></div>
                   </div>
                   <button
                     onClick={() => setCurrentView('map')}
                     className="text-[11px] font-bold text-[#035925] hover:text-[#002c11] flex items-center gap-1 transition-colors"
                   >
-                    View Map
+                    {t(lang, 'viewMap')}
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
                   </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {zones.slice(0, 2).map(zone => (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {zones.slice(0, 3).map(zone => (
                     <ZoneCard key={zone.id} zone={zone} onUpdate={loadData} />
                   ))}
+                  {zones.length === 0 && (
+                    <button
+                      onClick={() => setShowZoneModal(true)}
+                      className="col-span-full h-28 border-2 border-dashed border-[#035925]/20 rounded-xl text-sm font-bold text-[#035925]/60 hover:border-[#035925]/40 hover:text-[#035925] hover:bg-[#035925]/5 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" /> {t(lang, 'addNewZone')}
+                    </button>
+                  )}
                 </div>
-              </div>
-
-              <div className="xl:col-span-4">
-                <WeatherWidget weather={weather} />
               </div>
             </div>
 
@@ -257,28 +303,24 @@ export default function App() {
         )}
 
         {currentView === 'tasks-detail' && (
-          <TasksDetailView tasks={todayTasks.length > 0 ? todayTasks : tasks.filter(t => t.status === 'Pending')} zones={zones} onAction={handleTaskAction} />
+          <TasksDetailView tasks={todayTasks.length > 0 ? todayTasks : tasks.filter(t => t.status === 'Pending')} zones={zones} onAction={handleTaskAction} lang={lang} />
         )}
 
         {currentView === 'zones-detail' && (
-          <ZonesDetailView zones={zones} onUpdate={loadData} onEdit={z => setEditingZone(z)} onAdd={() => setShowZoneModal(true)} />
+          <ZonesDetailView zones={zones} onUpdate={loadData} onEdit={z => setEditingZone(z)} onAdd={() => setShowZoneModal(true)} lang={lang} />
         )}
 
         {currentView === 'weather-detail' && (
-          <WeatherDetailView weather={weather} />
+          <WeatherDetailView weather={weather} lang={lang} />
         )}
 
-        {currentView === 'water-detail' && (
-          <WaterUsageView zones={zones} onViewReport={() => setCurrentView('water-report')} />
-        )}
-
-        {currentView === 'water-report' && (
-          <WaterReportView zones={zones} />
+        {currentView === 'reports' && (
+          <ReportsView zones={zones} tasks={tasks} lang={lang} />
         )}
 
         {currentView === 'assistant' && <LiveScout />}
         {currentView === 'map' && <FarmMap zones={zones} onUpdate={loadData} onEdit={z => setEditingZone(z)} onAdd={() => setShowZoneModal(true)} />}
-        {currentView === 'settings' && <SettingsPage user={user} onUserUpdate={(u) => setUser(u)} />}
+        {currentView === 'settings' && <SettingsPage user={user} onUserUpdate={(u) => setUser(u)} lang={lang} />}
 
         {showNewTask && (
           <NewTaskModal
@@ -308,12 +350,12 @@ export default function App() {
   );
 }
 
-function TasksDetailView({ tasks, zones, onAction }: { tasks: Task[]; zones: Zone[]; onAction: (id: number, action: string) => void }) {
+function TasksDetailView({ tasks, zones, onAction, lang }: { tasks: Task[]; zones: Zone[]; onAction: (id: number, action: string) => void; lang: Language }) {
   return (
     <div className="space-y-4">
       {tasks.length === 0 ? (
         <div className="bg-white rounded-xl p-8 shadow-sm border border-[#002c11]/[0.04] text-center">
-          <p className="text-[#5d6c7b] text-sm">No pending tasks for today</p>
+          <p className="text-[#5d6c7b] text-sm">{t(lang, 'noPendingTasks')}</p>
         </div>
       ) : (
         tasks.map(task => {
@@ -341,7 +383,7 @@ function TasksDetailView({ tasks, zones, onAction }: { tasks: Task[]; zones: Zon
                     onClick={() => onAction(task.id, 'Completed')}
                     className="text-xs font-bold text-[#035925] hover:text-[#002c11] px-3 py-1.5 bg-[#035925]/5 hover:bg-[#035925]/10 rounded-lg transition-colors"
                   >
-                    Complete
+                    {t(lang, 'complete')}
                   </button>
                 </div>
               </div>
@@ -356,7 +398,7 @@ function TasksDetailView({ tasks, zones, onAction }: { tasks: Task[]; zones: Zon
   );
 }
 
-function ZonesDetailView({ zones, onUpdate, onEdit, onAdd }: { zones: Zone[]; onUpdate: () => void; onEdit: (z: Zone) => void; onAdd: () => void }) {
+function ZonesDetailView({ zones, onUpdate, onEdit, onAdd, lang }: { zones: Zone[]; onUpdate: () => void; onEdit: (z: Zone) => void; onAdd: () => void; lang: Language }) {
   return (
     <div className="space-y-4">
       <button
@@ -364,36 +406,35 @@ function ZonesDetailView({ zones, onUpdate, onEdit, onAdd }: { zones: Zone[]; on
         className="w-full h-12 border-2 border-dashed border-[#035925]/20 rounded-xl text-sm font-bold text-[#035925]/60 hover:border-[#035925]/40 hover:text-[#035925] hover:bg-[#035925]/5 transition-all flex items-center justify-center gap-2"
         style={{ fontFamily: "'Instrument Sans', sans-serif" }}
       >
-        <Plus className="w-4 h-4" /> Add New Zone
+        <Plus className="w-4 h-4" /> {t(lang, 'addNewZone')}
       </button>
       {zones.map(zone => (
         <ZoneCard key={zone.id} zone={zone} onUpdate={onUpdate} onEdit={onEdit} />
       ))}
       {zones.length === 0 && (
         <div className="text-center py-12 text-[#5d6c7b]">
-          <p className="text-lg font-bold mb-2">No zones yet</p>
-          <p className="text-sm">Add your first farm zone to get started</p>
+          <p className="text-lg font-bold mb-2">{t(lang, 'noZonesYet')}</p>
+          <p className="text-sm">{t(lang, 'addFirstZone')}</p>
         </div>
       )}
     </div>
   );
 }
 
-function WeatherDetailView({ weather }: { weather: any }) {
+function WeatherDetailView({ weather, lang }: { weather: any; lang: Language }) {
   const current = weather?.current || { temp: 28, condition: 'Loading...', humidity: 72, wind: 12 };
-
   const forecast = weather?.forecast || [];
 
   const weatherData = [
-    { day: 'Today', high: Math.round(current.temp), low: Math.round(current.temp - 6), condition: current.condition, rain: 0 },
+    { day: lang === 'sw' ? 'Leo' : 'Today', high: Math.round(current.temp), low: Math.round(current.temp - 6), condition: current.condition, rain: 0 },
     ...forecast,
   ];
 
   const conditionEmoji = (c: string) => {
-    const lower = c.toLowerCase();
-    if (lower.includes('rain') || lower.includes('shower')) return '🌧️';
-    if (lower.includes('cloud')) return '⛅';
-    if (lower.includes('thunder')) return '⛈️';
+    const lower = (c || '').toLowerCase();
+    if (lower.includes('rain') || lower.includes('shower') || lower.includes('mvua')) return '🌧️';
+    if (lower.includes('cloud') || lower.includes('wingu')) return '⛅';
+    if (lower.includes('thunder') || lower.includes('radi')) return '⛈️';
     return '☀️';
   };
 
@@ -402,20 +443,22 @@ function WeatherDetailView({ weather }: { weather: any }) {
       <div className="bg-[#002c11] rounded-xl p-6 text-white">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <p className="text-white/50 text-xs font-bold uppercase tracking-wider">Current Weather</p>
+            <p className="text-white/50 text-xs font-bold uppercase tracking-wider">{lang === 'sw' ? 'Hali ya Hewa Sasa' : 'Current Weather'}</p>
             <p className="text-4xl font-black mt-1" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>{Math.round(current.temp)}°C</p>
             <p className="text-white/60 text-sm mt-1">{current.condition}</p>
           </div>
-          <span className="text-5xl">☀️</span>
+          <span className="text-5xl">{conditionEmoji(current.condition)}</span>
         </div>
         <div className="flex gap-6 text-sm text-white/50">
-          <span>Humidity <span className="text-white font-bold">{Math.round(current.humidity)}%</span></span>
-          <span>Wind <span className="text-white font-bold">{Math.round(current.wind)} km/h</span></span>
+          <span>{lang === 'sw' ? 'Unyevunyevu' : 'Humidity'} <span className="text-white font-bold">{Math.round(current.humidity)}%</span></span>
+          <span>{lang === 'sw' ? 'Upepo' : 'Wind'} <span className="text-white font-bold">{Math.round(current.wind)} km/h</span></span>
         </div>
       </div>
 
       <div className="flex items-center gap-3">
-        <h3 className="text-xs font-black text-[#002c11] uppercase tracking-[0.15em]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>7-Day Forecast</h3>
+        <h3 className="text-xs font-black text-[#002c11] uppercase tracking-[0.15em]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
+          {lang === 'sw' ? 'Utabiri wa Siku 7' : '7-Day Forecast'}
+        </h3>
         <div className="h-[2px] w-8 bg-[#fc8e44] rounded-full"></div>
       </div>
 
@@ -426,7 +469,7 @@ function WeatherDetailView({ weather }: { weather: any }) {
             <span className="text-3xl block mb-2">{conditionEmoji(d.condition)}</span>
             <p className="text-lg font-black text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>{d.high}°/{d.low}°</p>
             <p className="text-[10px] text-[#5d6c7b] mt-1">{d.condition}</p>
-            {d.rain > 0 && <p className="text-[10px] text-blue-600 mt-0.5">🌧 {d.rain}% rain</p>}
+            {d.rain > 0 && <p className="text-[10px] text-blue-600 mt-0.5">🌧 {d.rain}% {lang === 'sw' ? 'mvua' : 'rain'}</p>}
           </div>
         ))}
       </div>
@@ -434,182 +477,127 @@ function WeatherDetailView({ weather }: { weather: any }) {
   );
 }
 
-function WaterUsageView({ zones, onViewReport }: { zones: Zone[]; onViewReport: () => void }) {
-  const zoneWater = zones.map(z => ({
-    name: z.name,
-    crop: z.crop_type,
-    today: Math.floor(500 + Math.random() * 300),
-    yesterday: Math.floor(500 + Math.random() * 400),
-  }));
+function ReportsView({ zones, tasks, lang }: { zones: Zone[]; tasks: Task[]; lang: Language }) {
+  const completedTasks = tasks.filter(t => t.status === 'Completed');
+  const pendingTasks = tasks.filter(t => t.status === 'Pending');
+  const harvestedZones = zones.filter(z => z.status === 'Harvested');
+  const activeZones = zones.filter(z => z.status === 'Active');
 
-  const totalToday = zoneWater.reduce((s, z) => s + z.today, 0);
-  const totalYesterday = zoneWater.reduce((s, z) => s + z.yesterday, 0);
-  const change = totalYesterday > 0 ? ((totalToday - totalYesterday) / totalYesterday * 100).toFixed(1) : '0';
+  const totalExpectedYield = zones.reduce((sum, z) => sum + (z.expected_yield_kg || 0), 0);
+  const totalActualYield = zones.reduce((sum, z) => sum + (z.actual_yield_kg || 0), 0);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {[
+          { label: lang === 'sw' ? 'Maeneo Hai' : 'Active Zones', value: activeZones.length, icon: '🌱', color: '#035925' },
+          { label: lang === 'sw' ? 'Maeneo Yaliovunwa' : 'Harvested', value: harvestedZones.length, icon: '🌾', color: '#fc8e44' },
+          { label: lang === 'sw' ? 'Kazi Zilizokamilika' : 'Tasks Done', value: completedTasks.length, icon: '✅', color: '#0082f3' },
+          { label: lang === 'sw' ? 'Kazi Zinazosubiri' : 'Pending Tasks', value: pendingTasks.length, icon: '⏳', color: '#5d6c7b' },
+        ].map(s => (
+          <div key={s.label} className="bg-white rounded-xl p-4 shadow-sm border border-[#002c11]/[0.04] border-l-[3px]" style={{ borderLeftColor: s.color }}>
+            <span className="text-2xl block mb-2">{s.icon}</span>
+            <p className="text-2xl font-black text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>{s.value}</p>
+            <p className="text-[11px] text-[#5d6c7b] mt-0.5">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
       <div className="bg-white rounded-xl p-6 shadow-sm border border-[#002c11]/[0.04]">
-        <div className="flex items-center justify-between mb-4">
+        <h3 className="font-black text-[#002c11] mb-4 text-sm uppercase tracking-wider" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
+          {lang === 'sw' ? 'Muhtasari wa Mavuno' : 'Yield Summary'}
+        </h3>
+        <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
-            <p className="text-xs font-bold text-[#002c11]/60 uppercase tracking-wider">Total Farm Water Usage</p>
-            <p className="text-3xl font-black text-[#002c11] mt-1" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>{totalToday.toLocaleString()}L</p>
-            <p className={`text-xs mt-1 font-bold ${Number(change) < 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {Number(change) < 0 ? '↓' : '↑'} {Math.abs(Number(change))}% vs yesterday ({totalYesterday.toLocaleString()}L)
+            <p className="text-xs text-[#5d6c7b]">{lang === 'sw' ? 'Mavuno Yanayotarajiwa' : 'Expected Yield'}</p>
+            <p className="text-2xl font-black text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
+              {totalExpectedYield.toLocaleString()} kg
             </p>
           </div>
-          <Droplets className="w-10 h-10 text-blue-400/30" />
+          <div>
+            <p className="text-xs text-[#5d6c7b]">{lang === 'sw' ? 'Mavuno Halisi' : 'Actual Yield'}</p>
+            <p className="text-2xl font-black text-[#035925]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
+              {totalActualYield.toLocaleString()} kg
+            </p>
+          </div>
         </div>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <h3 className="text-xs font-black text-[#002c11] uppercase tracking-[0.15em]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>Usage by Zone</h3>
-        <div className="h-[2px] w-8 bg-[#fc8e44] rounded-full"></div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {zoneWater.map(z => {
-          const diff = z.yesterday > 0 ? ((z.today - z.yesterday) / z.yesterday * 100).toFixed(1) : '0';
-          const maxVal = Math.max(z.today, z.yesterday);
-          return (
-            <div key={z.name} className="bg-white rounded-xl p-5 shadow-sm border border-[#002c11]/[0.04]">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-sm font-bold text-[#002c11]">{z.name}</p>
-                  <p className="text-[10px] text-[#5d6c7b]">{z.crop}</p>
-                </div>
-                <span className={`text-xs font-bold ${Number(diff) < 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {Number(diff) < 0 ? '↓' : '↑'} {Math.abs(Number(diff))}%
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                <div>
-                  <div className="flex justify-between text-[10px] text-[#5d6c7b] mb-1">
-                    <span>Today</span><span className="font-bold text-[#002c11]">{z.today}L</span>
-                  </div>
-                  <div className="w-full bg-[#002c11]/[0.06] h-2 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${(z.today / maxVal) * 100}%` }}></div>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-[10px] text-[#5d6c7b] mb-1">
-                    <span>Yesterday</span><span className="font-bold text-[#002c11]">{z.yesterday}L</span>
-                  </div>
-                  <div className="w-full bg-[#002c11]/[0.06] h-2 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-300 rounded-full" style={{ width: `${(z.yesterday / maxVal) * 100}%` }}></div>
-                  </div>
-                </div>
-              </div>
+        {totalExpectedYield > 0 && (
+          <div>
+            <div className="flex justify-between text-xs text-[#5d6c7b] mb-1">
+              <span>{lang === 'sw' ? 'Utendaji' : 'Performance'}</span>
+              <span>{Math.round((totalActualYield / totalExpectedYield) * 100)}%</span>
             </div>
-          );
-        })}
-      </div>
-
-      <button
-        onClick={onViewReport}
-        className="w-full bg-white rounded-xl p-4 shadow-sm border border-[#002c11]/[0.04] flex items-center justify-between hover:shadow-md transition-all group"
-      >
-        <div className="flex items-center gap-3">
-          <Droplets className="w-5 h-5 text-blue-500" />
-          <span className="text-sm font-bold text-[#002c11]">See Full Report</span>
-        </div>
-        <ChevronRight className="w-5 h-5 text-[#5d6c7b]/30 group-hover:text-[#035925] transition-colors" />
-      </button>
-    </div>
-  );
-}
-
-function WaterReportView({ zones }: { zones: Zone[] }) {
-  const [reportType, setReportType] = useState<'zone' | 'farm'>('zone');
-  const [period, setPeriod] = useState<'day' | 'week' | 'month' | 'season'>('day');
-  const [selectedZone, setSelectedZone] = useState<number | 'all'>('all');
-
-  const generateData = (p: string) => {
-    const labels: string[] = [];
-    const count = p === 'day' ? 7 : p === 'week' ? 4 : p === 'month' ? 6 : 4;
-    for (let i = count - 1; i >= 0; i--) {
-      if (p === 'day') {
-        const d = new Date(); d.setDate(d.getDate() - i);
-        labels.push(d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }));
-      } else if (p === 'week') labels.push(`Week ${count - i}`);
-      else if (p === 'month') {
-        const d = new Date(); d.setMonth(d.getMonth() - i);
-        labels.push(d.toLocaleDateString('en-GB', { month: 'short' }));
-      } else labels.push(`Season ${count - i}`);
-    }
-    return labels;
-  };
-
-  const labels = generateData(period);
-
-  return (
-    <div className="space-y-5">
-      <div className="bg-white rounded-xl p-5 shadow-sm border border-[#002c11]/[0.04]">
-        <p className="text-xs font-bold text-[#002c11]/60 uppercase tracking-wider mb-4">Report Type</p>
-        <div className="flex gap-2 mb-4">
-          <button onClick={() => setReportType('zone')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${reportType === 'zone' ? 'bg-[#035925] text-white' : 'bg-[#002c11]/5 text-[#5d6c7b] hover:bg-[#002c11]/10'}`}>
-            Per Zone
-          </button>
-          <button onClick={() => setReportType('farm')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${reportType === 'farm' ? 'bg-[#035925] text-white' : 'bg-[#002c11]/5 text-[#5d6c7b] hover:bg-[#002c11]/10'}`}>
-            Whole Farm
-          </button>
-        </div>
-
-        <p className="text-xs font-bold text-[#002c11]/60 uppercase tracking-wider mb-3">Period</p>
-        <div className="flex gap-2 flex-wrap mb-4">
-          {(['day', 'week', 'month', 'season'] as const).map(p => (
-            <button key={p} onClick={() => setPeriod(p)} className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${period === p ? 'bg-blue-500 text-white' : 'bg-[#002c11]/5 text-[#5d6c7b] hover:bg-[#002c11]/10'}`}>
-              {p === 'day' ? 'Daily' : p === 'week' ? 'Weekly' : p === 'month' ? 'Monthly' : 'Seasonal'}
-            </button>
-          ))}
-        </div>
-
-        {reportType === 'zone' && (
-          <>
-            <p className="text-xs font-bold text-[#002c11]/60 uppercase tracking-wider mb-3">Zone</p>
-            <div className="flex gap-2 flex-wrap">
-              <button onClick={() => setSelectedZone('all')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedZone === 'all' ? 'bg-[#fc8e44] text-white' : 'bg-[#002c11]/5 text-[#5d6c7b] hover:bg-[#002c11]/10'}`}>
-                All Zones
-              </button>
-              {zones.map(z => (
-                <button key={z.id} onClick={() => setSelectedZone(z.id)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedZone === z.id ? 'bg-[#fc8e44] text-white' : 'bg-[#002c11]/5 text-[#5d6c7b] hover:bg-[#002c11]/10'}`}>
-                  {z.name}
-                </button>
-              ))}
+            <div className="w-full bg-[#002c11]/[0.06] h-3 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[#035925] rounded-full transition-all"
+                style={{ width: `${Math.min(100, (totalActualYield / totalExpectedYield) * 100)}%` }}
+              ></div>
             </div>
-          </>
+          </div>
         )}
       </div>
 
-      <div className="bg-white rounded-xl p-5 shadow-sm border border-[#002c11]/[0.04]">
-        <p className="text-xs font-bold text-[#002c11]/60 uppercase tracking-wider mb-4">
-          {reportType === 'farm' ? 'Farm Water Usage' : selectedZone === 'all' ? 'All Zones Water Usage' : `${zones.find(z => z.id === selectedZone)?.name || ''} Water Usage`} — {period === 'day' ? 'Daily' : period === 'week' ? 'Weekly' : period === 'month' ? 'Monthly' : 'Seasonal'}
-        </p>
-
-        <div className="space-y-3">
-          {labels.map((label, i) => {
-            const displayZones = reportType === 'farm'
-              ? [{ name: 'Total Farm', value: Math.floor(800 + Math.random() * 600) }]
-              : selectedZone === 'all'
-                ? zones.map(z => ({ name: z.name, value: Math.floor(300 + Math.random() * 400) }))
-                : [{ name: zones.find(z => z.id === selectedZone)?.name || '', value: Math.floor(300 + Math.random() * 400) }];
-
-            return (
-              <div key={i} className="border-b border-[#002c11]/[0.04] pb-3 last:border-0">
-                <p className="text-xs font-bold text-[#002c11] mb-2">{label}</p>
-                {displayZones.map(dz => (
-                  <div key={dz.name} className="flex items-center gap-3 mb-1">
-                    <span className="text-[10px] text-[#5d6c7b] w-20 shrink-0">{dz.name}</span>
-                    <div className="flex-1 bg-[#002c11]/[0.04] h-3 rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full" style={{ width: `${Math.min(100, (dz.value / 1200) * 100)}%` }}></div>
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-[#002c11]/[0.04]">
+        <h3 className="font-black text-[#002c11] mb-4 text-sm uppercase tracking-wider" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
+          {lang === 'sw' ? 'Utendaji kwa Eneo' : 'Performance by Zone'}
+        </h3>
+        {zones.length === 0 ? (
+          <p className="text-sm text-[#5d6c7b] text-center py-4">{lang === 'sw' ? 'Hakuna maeneo bado' : 'No zones yet'}</p>
+        ) : (
+          <div className="space-y-4">
+            {zones.map(zone => {
+              const growth = zone.current_growth_day || 0;
+              const cropDays: Record<string, number> = { 'Tomato': 120, 'Onion': 150, 'Pepper': 130, 'Cabbage': 100, 'Spinach': 50, 'Cucumber': 70, 'Watermelon': 90, 'Eggplant': 130, 'Carrot': 90, 'Lettuce': 65, 'Okra': 60, 'Green Bean': 60, 'Maize': 120 };
+              const maxDays = cropDays[zone.crop_type] || 120;
+              const progress = Math.min(100, Math.round((growth / maxDays) * 100));
+              return (
+                <div key={zone.id} className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="text-sm font-bold text-[#002c11]">{zone.name}</span>
+                      <span className="text-xs text-[#5d6c7b] ml-2">· {zone.crop_type}</span>
                     </div>
-                    <span className="text-xs font-bold text-[#002c11] w-14 text-right">{dz.value}L</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${zone.status === 'Active' ? 'bg-green-50 text-green-700' : zone.status === 'Harvested' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {zone.status}
+                      </span>
+                      <span className="text-xs text-[#5d6c7b]">{progress}%</span>
+                    </div>
                   </div>
-                ))}
+                  <div className="w-full bg-[#002c11]/[0.06] h-2 rounded-full overflow-hidden">
+                    <div className="h-full bg-[#035925] rounded-full transition-all" style={{ width: `${progress}%` }}></div>
+                  </div>
+                  <div className="flex justify-between text-[10px] text-[#5d6c7b]">
+                    <span>{lang === 'sw' ? 'Siku' : 'Day'} {growth}/{maxDays}</span>
+                    {zone.actual_yield_kg > 0 && <span>✅ {zone.actual_yield_kg} kg {lang === 'sw' ? 'yaliovunwa' : 'harvested'}</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-[#002c11]/[0.04]">
+        <h3 className="font-black text-[#002c11] mb-4 text-sm uppercase tracking-wider" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
+          {lang === 'sw' ? 'Shughuli za Hivi Karibuni' : 'Recent Activity'}
+        </h3>
+        {completedTasks.length === 0 ? (
+          <p className="text-sm text-[#5d6c7b] text-center py-4">{lang === 'sw' ? 'Hakuna shughuli zilizokamilika bado' : 'No completed activities yet'}</p>
+        ) : (
+          <div className="space-y-2">
+            {completedTasks.slice(0, 10).map(task => (
+              <div key={task.id} className="flex items-center gap-3 py-2 border-b border-[#002c11]/[0.04] last:border-0">
+                <span className="text-lg">{task.task_type === 'Fertigation' ? '🧪' : task.task_type === 'Irrigation' ? '💧' : '🔍'}</span>
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-[#002c11]">{task.task_type}</p>
+                  <p className="text-[10px] text-[#5d6c7b]">{new Date(task.scheduled_time).toLocaleDateString()}</p>
+                </div>
+                <span className="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">{lang === 'sw' ? 'Imekamilika' : 'Done'}</span>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -57,6 +57,38 @@ declare module 'express-session' {
   }
 }
 
+const TANZANIA_REGIONS: Record<string, { lat: number; lon: number }> = {
+  'Arusha': { lat: -3.3869, lon: 36.6827 },
+  'Dar es Salaam': { lat: -6.7924, lon: 39.2083 },
+  'Dodoma': { lat: -6.1731, lon: 35.7395 },
+  'Geita': { lat: -2.8667, lon: 32.1667 },
+  'Iringa': { lat: -7.7701, lon: 35.6930 },
+  'Kagera': { lat: -1.5000, lon: 31.5000 },
+  'Katavi': { lat: -6.7667, lon: 31.8167 },
+  'Kigoma': { lat: -4.8769, lon: 29.6267 },
+  'Kilimanjaro': { lat: -3.3449, lon: 37.3544 },
+  'Lindi': { lat: -9.9966, lon: 39.7166 },
+  'Manyara': { lat: -3.6167, lon: 35.7500 },
+  'Mara': { lat: -1.5000, lon: 34.0000 },
+  'Mbeya': { lat: -8.9000, lon: 33.4500 },
+  'Morogoro': { lat: -6.8242, lon: 37.6615 },
+  'Mtwara': { lat: -10.2640, lon: 40.1833 },
+  'Mwanza': { lat: -2.5167, lon: 32.9000 },
+  'Njombe': { lat: -9.3333, lon: 34.7667 },
+  'Pwani': { lat: -7.1000, lon: 38.7000 },
+  'Rukwa': { lat: -8.0000, lon: 31.4167 },
+  'Ruvuma': { lat: -10.5000, lon: 35.7833 },
+  'Shinyanga': { lat: -3.6635, lon: 33.4270 },
+  'Simiyu': { lat: -2.8333, lon: 34.3333 },
+  'Singida': { lat: -4.8158, lon: 34.7469 },
+  'Songwe': { lat: -8.9000, lon: 32.8000 },
+  'Tabora': { lat: -5.0167, lon: 32.8000 },
+  'Tanga': { lat: -5.0694, lon: 39.0994 },
+  'Zanzibar North': { lat: -5.7333, lon: 39.2167 },
+  'Zanzibar South': { lat: -6.1667, lon: 39.3000 },
+  'Zanzibar West': { lat: -6.1667, lon: 39.1833 },
+};
+
 const isAuthenticated: RequestHandler = async (req, res, next) => {
   if (req.session?.userId) {
     const user = await dbGet('SELECT is_active FROM users WHERE id = ?', req.session.userId);
@@ -157,8 +189,57 @@ async function startServer() {
     });
   });
 
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { email, phone_number, password, first_name, last_name, language, region, district, farm_size_acres } = req.body;
+      if (!password || password.length < 6) {
+        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      }
+      if (!email && !phone_number) {
+        return res.status(400).json({ message: "Email or phone number is required" });
+      }
+      if (!first_name) {
+        return res.status(400).json({ message: "First name is required" });
+      }
+
+      if (email) {
+        const existing = await dbGet('SELECT id FROM users WHERE email = ?', email);
+        if (existing) {
+          return res.status(409).json({ message: "An account with this email already exists" });
+        }
+      }
+      if (phone_number) {
+        const existing = await dbGet('SELECT id FROM users WHERE phone_number = ?', phone_number);
+        if (existing) {
+          return res.status(409).json({ message: "An account with this phone number already exists" });
+        }
+      }
+
+      const hash = bcrypt.hashSync(password, 10);
+      const info = await dbRun(
+        'INSERT INTO users (email, phone_number, password_hash, first_name, last_name, role, language, region, district, farm_size_acres) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        email || null, phone_number || null, hash, first_name, last_name || null, 'user',
+        language || 'en', region || null, district || null, farm_size_acres || null
+      );
+
+      const newUser = await dbGet('SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres FROM users WHERE id = ?', info.lastInsertRowid);
+
+      req.session.regenerate((err) => {
+        if (err) return res.status(500).json({ message: "Session error" });
+        req.session.userId = newUser.id;
+        req.session.save((err) => {
+          if (err) return res.status(500).json({ message: "Session error" });
+          res.json(newUser);
+        });
+      });
+    } catch (err: any) {
+      console.error('[register] Error:', err.message);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/auth/user", isAuthenticated, async (req, res) => {
-    const user = await dbGet('SELECT id, email, first_name, last_name, role, created_at FROM users WHERE id = ?', req.session.userId!);
+    const user = await dbGet('SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres, created_at FROM users WHERE id = ?', req.session.userId!);
     if (!user) {
       return res.status(401).json({ message: "User not found" });
     }
@@ -277,11 +358,13 @@ async function startServer() {
 
   app.put("/api/auth/profile", isAuthenticated, async (req, res) => {
     try {
-      const { first_name, last_name } = req.body;
-      await dbRun('UPDATE users SET first_name = ?, last_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-        first_name || null, last_name || null, req.session.userId!
+      const { first_name, last_name, language, region, district, farm_size_acres } = req.body;
+      await dbRun(
+        'UPDATE users SET first_name = ?, last_name = ?, language = ?, region = ?, district = ?, farm_size_acres = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        first_name || null, last_name || null, language || 'en', region || null, district || null,
+        farm_size_acres || null, req.session.userId!
       );
-      const user = await dbGet('SELECT id, email, first_name, last_name, role, created_at FROM users WHERE id = ?', req.session.userId!);
+      const user = await dbGet('SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres, created_at FROM users WHERE id = ?', req.session.userId!);
       res.json(user);
     } catch {
       res.status(500).json({ message: "Internal server error" });
@@ -289,7 +372,8 @@ async function startServer() {
   });
 
   app.get("/api/zones", isAuthenticated, async (req, res) => {
-    const zones = await dbAll('SELECT * FROM zones');
+    const userId = (req.session as any).userId;
+    const zones = await dbAll('SELECT * FROM zones WHERE user_id = ? OR user_id IS NULL', userId);
 
     const zonesWithDetails = [];
     for (const zone of zones as any[]) {
@@ -329,8 +413,9 @@ async function startServer() {
   });
 
   app.post("/api/zones", isAuthenticated, async (req, res) => {
+    const userId = (req.session as any).userId;
     const { name, crop_type, planting_date, area_size } = req.body;
-    const info = await dbRun('INSERT INTO zones (name, crop_type, planting_date, area_size) VALUES (?, ?, ?, ?)', name, crop_type, planting_date, area_size);
+    const info = await dbRun('INSERT INTO zones (user_id, name, crop_type, planting_date, area_size) VALUES (?, ?, ?, ?, ?)', userId, name, crop_type, planting_date, area_size);
     res.json({ id: info.lastInsertRowid });
   });
 
@@ -518,6 +603,70 @@ Current Date: ${new Date().toISOString()}`;
     });
     return response.text || "I could not generate a response.";
   }
+
+  app.post("/api/chat/guest", async (req, res) => {
+    try {
+      const { message, language } = req.body;
+      if (!message || typeof message !== 'string' || message.trim().length === 0) {
+        return res.status(400).json({ error: "Message is required" });
+      }
+
+      const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+      const GUEST_LIMIT = 5;
+      const WINDOW_HOURS = 24;
+
+      let guestLog = await dbGet('SELECT * FROM guest_chat_logs WHERE ip_address = ?', ip);
+      if (guestLog) {
+        const firstMsg = new Date(guestLog.first_message_at);
+        const hoursSince = (Date.now() - firstMsg.getTime()) / (1000 * 60 * 60);
+        if (hoursSince >= WINDOW_HOURS) {
+          await dbRun('UPDATE guest_chat_logs SET message_count = 1, first_message_at = CURRENT_TIMESTAMP, last_message_at = CURRENT_TIMESTAMP WHERE ip_address = ?', ip);
+          guestLog = await dbGet('SELECT * FROM guest_chat_logs WHERE ip_address = ?', ip);
+        } else if (guestLog.message_count >= GUEST_LIMIT) {
+          const hoursLeft = Math.ceil(WINDOW_HOURS - hoursSince);
+          return res.status(429).json({
+            error: "limit_reached",
+            message: language === 'sw'
+              ? `Umefika kikomo cha mazungumzo ya mgeni. Jiandikishe au rudi baada ya masaa ${hoursLeft}.`
+              : `You've reached the guest chat limit. Please register or come back in ${hoursLeft} hours.`,
+            hours_left: hoursLeft
+          });
+        } else {
+          await dbRun('UPDATE guest_chat_logs SET message_count = message_count + 1, last_message_at = CURRENT_TIMESTAMP WHERE ip_address = ?', ip);
+        }
+      } else {
+        await dbRun('INSERT INTO guest_chat_logs (ip_address, message_count) VALUES (?, 1)', ip);
+      }
+
+      const guestCount = guestLog ? guestLog.message_count + 1 : 1;
+      const remainingMessages = GUEST_LIMIT - guestCount;
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "AI service unavailable" });
+
+      const ai = new GoogleGenAI({ apiKey });
+      const langInstr = language === 'sw'
+        ? 'Jibu DAIMA kwa Kiswahili tu.'
+        : 'Always respond in English.';
+
+      const systemInstruction = `You are BwanaShamba, an AI farming assistant for farmers in Tanzania. ${langInstr}
+You help farmers with questions about crops, soil, pests, diseases, fertilizers, weather, and market prices.
+Be concise, practical, and friendly.
+Current Date: ${new Date().toISOString().split('T')[0]}`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ role: 'user', parts: [{ text: message }] }],
+        config: { systemInstruction }
+      });
+
+      const reply = response.text || "I could not generate a response.";
+      res.json({ reply, messages_remaining: Math.max(0, remainingMessages) });
+    } catch (err: any) {
+      console.error('[guest-chat] Error:', err.message);
+      res.status(500).json({ error: "Failed to process request" });
+    }
+  });
 
   app.post("/api/chat", isAuthenticated, async (req, res) => {
     try {
@@ -777,13 +926,18 @@ Be concise and actionable.`;
   });
 
   app.post("/api/engine/run-checks", isAuthenticated, async (req, res) => {
-    const zones = await dbAll("SELECT * FROM zones WHERE status = 'Active'");
-    const newTasks = [];
+    const userId = (req.session as any).userId;
+    const zones = await dbAll("SELECT * FROM zones WHERE status = 'Active' AND (user_id = ? OR user_id IS NULL)", userId);
+    const newTasks: any[] = [];
+
+    const userProfile = await dbGet('SELECT region FROM users WHERE id = ?', userId);
+    const userRegion = userProfile?.region || 'Pwani';
+    const coords = TANZANIA_REGIONS[userRegion] || { lat: -7.1, lon: 38.7 };
 
     let mockWeather: any;
     try {
       const weatherRes = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=-7.1&longitude=38.7&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,weather_code&timezone=Africa%2FDar_es_Salaam&forecast_days=7`,
+        `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,weather_code&timezone=Africa%2FDar_es_Salaam&forecast_days=7`,
         { signal: AbortSignal.timeout(8000) }
       );
       if (!weatherRes.ok) throw new Error(`Weather API returned ${weatherRes.status}`);
@@ -841,72 +995,11 @@ Be concise and actionable.`;
       };
     }
 
-    for (const zone of zones as any[]) {
-      const plantingDate = new Date(zone.planting_date);
-      const today = new Date();
-      const diffTime = Math.abs(today.getTime() - plantingDate.getTime());
-      const growthDay = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      let irrigationNeeded = false;
-      let duration = 60;
-      let reasoning = "";
-
-      const cropMaxDays: Record<string, number> = { 'Tomato': 120, 'Onion': 150, 'Pepper': 130, 'Cabbage': 100, 'Spinach': 50, 'Cucumber': 70, 'Watermelon': 90, 'Eggplant': 130, 'Carrot': 90, 'Lettuce': 65, 'Okra': 60, 'Green Bean': 60, 'Maize': 120 };
-      const maxDays = cropMaxDays[zone.crop_type] || 120;
-      const floweringStart = Math.round(maxDays * 0.33);
-      const floweringEnd = Math.round(maxDays * 0.75);
-
-      if (growthDay > floweringStart && growthDay < floweringEnd) {
-        duration = 90;
-        reasoning = "Flowering/Fruiting Stage Boost";
-      }
-
-      if (zone.crop_type === 'Onion' && growthDay > 100) {
-        reasoning = "Dry-out period active. No irrigation.";
-        irrigationNeeded = false;
-      } else if (growthDay > maxDays) {
-        reasoning = "Past harvest date. Review zone status.";
-        irrigationNeeded = false;
-      } else {
-        irrigationNeeded = true;
-      }
-
-      if (mockWeather.nextDay.forecastRain > 3) {
-        irrigationNeeded = false;
-        reasoning = `RAIN DELAY: Forecast ${mockWeather.nextDay.forecastRain.toFixed(1)}mm rain.`;
-      } else if (mockWeather.nextDay.tempHigh > 33) {
-        duration = Math.round(duration * 1.2);
-        reasoning = reasoning ? `${reasoning} - HEAT COMPENSATION: High ${mockWeather.nextDay.tempHigh.toFixed(1)}°C` : `HEAT COMPENSATION: High ${mockWeather.nextDay.tempHigh.toFixed(1)}°C`;
-      }
-
-      if (irrigationNeeded) {
-        const now = new Date();
-        const nextIrrigation = new Date(now);
-
-        if (now.getHours() >= 6) {
-          nextIrrigation.setDate(nextIrrigation.getDate() + 1);
-        }
-        nextIrrigation.setHours(6, 0, 0, 0);
-        const scheduledTimeISO = nextIrrigation.toISOString();
-
-        const finalReasoning = "I will send a whatsapp notification 10 minutes before i start irrigation.";
-
-        const existingTask = await dbGet("SELECT * FROM tasks WHERE zone_id = ? AND task_type = 'Irrigation' AND status = 'Pending'", zone.id);
-
-        if (existingTask && existingTask.scheduled_time === scheduledTimeISO) {
-          await dbRun("UPDATE tasks SET reasoning = ?, duration_minutes = ? WHERE id = ?", finalReasoning, duration, existingTask.id);
-        } else {
-          await dbRun("DELETE FROM tasks WHERE zone_id = ? AND task_type = 'Irrigation' AND status = 'Pending'", zone.id);
-          await dbRun('INSERT INTO tasks (zone_id, task_type, scheduled_time, duration_minutes, reasoning, status) VALUES (?, ?, ?, ?, ?, ?)', zone.id, 'Irrigation', scheduledTimeISO, duration, finalReasoning, 'Pending');
-          newTasks.push({ zone: zone.name, type: 'Irrigation', duration, reasoning: finalReasoning });
-        }
-      }
-    }
-
     res.json({
       status: "checked",
       weather: mockWeather,
-      generatedTasks: newTasks
+      generatedTasks: newTasks,
+      region: userRegion
     });
   });
 

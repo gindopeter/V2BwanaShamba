@@ -113,6 +113,7 @@ async function createSchema() {
   await dbExec(`
     CREATE TABLE IF NOT EXISTS zones (
       id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      user_id INTEGER,
       name TEXT NOT NULL,
       crop_type TEXT NOT NULL,
       planting_date TEXT NOT NULL,
@@ -120,7 +121,7 @@ async function createSchema() {
       status TEXT DEFAULT 'Active',
       expected_yield_kg REAL DEFAULT 0,
       actual_yield_kg REAL DEFAULT 0,
-      irrigation_status TEXT DEFAULT 'Off' ${isPostgres ? '' : "CHECK(irrigation_status IN ('Off', 'Running'))"}
+      irrigation_status TEXT DEFAULT 'Off'
     )
   `);
 
@@ -128,7 +129,7 @@ async function createSchema() {
     CREATE TABLE IF NOT EXISTS tasks (
       id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
       zone_id INTEGER NOT NULL,
-      task_type TEXT ${isPostgres ? '' : "CHECK(task_type IN ('Irrigation', 'Fertigation', 'Scouting'))"} NOT NULL,
+      task_type TEXT NOT NULL,
       scheduled_time TEXT NOT NULL,
       duration_minutes INTEGER,
       status TEXT DEFAULT 'Pending',
@@ -151,14 +152,31 @@ async function createSchema() {
   await dbExec(`
     CREATE TABLE IF NOT EXISTS users (
       id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-      email TEXT UNIQUE NOT NULL,
+      email TEXT UNIQUE,
+      phone_number TEXT UNIQUE,
       password_hash TEXT NOT NULL,
       first_name TEXT,
       last_name TEXT,
-      role TEXT DEFAULT 'user' ${isPostgres ? '' : "CHECK(role IN ('admin', 'user'))"},
+      role TEXT DEFAULT 'user',
       is_active INTEGER DEFAULT 1,
+      language TEXT DEFAULT 'en',
+      region TEXT,
+      district TEXT,
+      farm_size_acres REAL,
+      email_verified INTEGER DEFAULT 0,
+      phone_verified INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await dbExec(`
+    CREATE TABLE IF NOT EXISTS guest_chat_logs (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      ip_address TEXT NOT NULL,
+      message_count INTEGER DEFAULT 1,
+      first_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -188,7 +206,7 @@ async function createSchema() {
     CREATE TABLE IF NOT EXISTS chat_messages (
       id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
       conversation_id INTEGER NOT NULL,
-      role TEXT NOT NULL ${isPostgres ? '' : "CHECK(role IN ('user', 'ai', 'system'))"},
+      role TEXT NOT NULL,
       text TEXT NOT NULL,
       image_url TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -213,6 +231,9 @@ async function runMigrations() {
     if (colNames.length > 0 && !colNames.includes('irrigation_status')) {
       await pgPool.query("ALTER TABLE zones ADD COLUMN irrigation_status TEXT DEFAULT 'Off'");
     }
+    if (colNames.length > 0 && !colNames.includes('user_id')) {
+      await pgPool.query("ALTER TABLE zones ADD COLUMN user_id INTEGER");
+    }
 
     const userCols = await dbAll(
       "SELECT column_name FROM information_schema.columns WHERE table_name = 'users'"
@@ -224,6 +245,32 @@ async function runMigrations() {
     if (userColNames.length > 0 && !userColNames.includes('role')) {
       await pgPool.query("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'");
     }
+    if (userColNames.length > 0 && !userColNames.includes('language')) {
+      await pgPool.query("ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'en'");
+    }
+    if (userColNames.length > 0 && !userColNames.includes('region')) {
+      await pgPool.query("ALTER TABLE users ADD COLUMN region TEXT");
+    }
+    if (userColNames.length > 0 && !userColNames.includes('district')) {
+      await pgPool.query("ALTER TABLE users ADD COLUMN district TEXT");
+    }
+    if (userColNames.length > 0 && !userColNames.includes('farm_size_acres')) {
+      await pgPool.query("ALTER TABLE users ADD COLUMN farm_size_acres REAL");
+    }
+    if (userColNames.length > 0 && !userColNames.includes('phone_number')) {
+      await pgPool.query("ALTER TABLE users ADD COLUMN phone_number TEXT");
+    }
+    if (userColNames.length > 0 && !userColNames.includes('email_verified')) {
+      await pgPool.query("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0");
+    }
+    if (userColNames.length > 0 && !userColNames.includes('phone_verified')) {
+      await pgPool.query("ALTER TABLE users ADD COLUMN phone_verified INTEGER DEFAULT 0");
+    }
+
+    try {
+      await pgPool.query("CREATE TABLE IF NOT EXISTS guest_chat_logs (id SERIAL PRIMARY KEY, ip_address TEXT NOT NULL, message_count INTEGER DEFAULT 1, first_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+    } catch {}
+
   } else {
     const tableInfo = sqliteDb.prepare("PRAGMA table_info(zones)").all() as any[];
     const columnNames = tableInfo.map((c: any) => c.name);
@@ -234,55 +281,39 @@ async function runMigrations() {
       sqliteDb.exec("ALTER TABLE zones ADD COLUMN actual_yield_kg REAL DEFAULT 0");
     }
     if (!columnNames.includes('irrigation_status')) {
-      sqliteDb.exec("ALTER TABLE zones ADD COLUMN irrigation_status TEXT DEFAULT 'Off' CHECK(irrigation_status IN ('Off', 'Running'))");
+      sqliteDb.exec("ALTER TABLE zones ADD COLUMN irrigation_status TEXT DEFAULT 'Off'");
     }
-
-    const checkSql = sqliteDb.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='zones'").get() as any;
-    if (checkSql?.sql && checkSql.sql.includes("CHECK(crop_type IN")) {
-      console.log('[DB] Migrating zones table to remove crop_type CHECK constraint...');
-      sqliteDb.exec("ALTER TABLE zones RENAME TO zones_old");
-      sqliteDb.exec(`
-        CREATE TABLE zones (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT NOT NULL,
-          crop_type TEXT NOT NULL,
-          planting_date TEXT NOT NULL,
-          area_size REAL DEFAULT 1.0,
-          status TEXT DEFAULT 'Active',
-          expected_yield_kg REAL DEFAULT 0,
-          actual_yield_kg REAL DEFAULT 0,
-          irrigation_status TEXT DEFAULT 'Off' CHECK(irrigation_status IN ('Off', 'Running'))
-        )
-      `);
-      sqliteDb.exec("INSERT INTO zones SELECT * FROM zones_old");
-      sqliteDb.exec("DROP TABLE zones_old");
-      console.log('[DB] Zones table migrated successfully.');
+    if (!columnNames.includes('user_id')) {
+      sqliteDb.exec("ALTER TABLE zones ADD COLUMN user_id INTEGER");
     }
 
     const usersTableInfo = sqliteDb.prepare("PRAGMA table_info(users)").all() as any[];
     const usersColumns = usersTableInfo.map((c: any) => c.name);
-    if (usersColumns.length > 0 && !usersColumns.includes('password_hash')) {
-      sqliteDb.exec("DROP TABLE IF EXISTS users");
-      sqliteDb.exec(`
-        CREATE TABLE users (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          email TEXT UNIQUE NOT NULL,
-          password_hash TEXT NOT NULL,
-          first_name TEXT,
-          last_name TEXT,
-          role TEXT DEFAULT 'user' CHECK(role IN ('admin', 'user')),
-          is_active INTEGER DEFAULT 1,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
+    if (usersColumns.length > 0 && !usersColumns.includes('language')) {
+      sqliteDb.exec("ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'en'");
     }
-    if (usersColumns.includes('password_hash') && !usersColumns.includes('role')) {
-      sqliteDb.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user' CHECK(role IN ('admin', 'user'))");
+    if (usersColumns.length > 0 && !usersColumns.includes('region')) {
+      sqliteDb.exec("ALTER TABLE users ADD COLUMN region TEXT");
     }
-    if (usersColumns.includes('password_hash') && !usersColumns.includes('is_active')) {
-      sqliteDb.exec("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1");
+    if (usersColumns.length > 0 && !usersColumns.includes('district')) {
+      sqliteDb.exec("ALTER TABLE users ADD COLUMN district TEXT");
     }
+    if (usersColumns.length > 0 && !usersColumns.includes('farm_size_acres')) {
+      sqliteDb.exec("ALTER TABLE users ADD COLUMN farm_size_acres REAL");
+    }
+    if (usersColumns.length > 0 && !usersColumns.includes('phone_number')) {
+      sqliteDb.exec("ALTER TABLE users ADD COLUMN phone_number TEXT");
+    }
+    if (usersColumns.length > 0 && !usersColumns.includes('email_verified')) {
+      sqliteDb.exec("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0");
+    }
+    if (usersColumns.length > 0 && !usersColumns.includes('phone_verified')) {
+      sqliteDb.exec("ALTER TABLE users ADD COLUMN phone_verified INTEGER DEFAULT 0");
+    }
+
+    try {
+      sqliteDb.exec("CREATE TABLE IF NOT EXISTS guest_chat_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, ip_address TEXT NOT NULL, message_count INTEGER DEFAULT 1, first_message_at TEXT DEFAULT CURRENT_TIMESTAMP, last_message_at TEXT DEFAULT CURRENT_TIMESTAMP)");
+    } catch {}
   }
 }
 
@@ -291,23 +322,25 @@ async function seedData() {
   if (usersCount.count === 0 || usersCount.count === '0') {
     const hash = bcrypt.hashSync('admin123', 10);
     await dbRun(
-      'INSERT INTO users (email, password_hash, first_name, last_name, role) VALUES (?, ?, ?, ?, ?)',
-      'admin@bwanashamba.com', hash, 'Farm', 'Admin', 'admin'
+      'INSERT INTO users (email, password_hash, first_name, last_name, role, email_verified, language) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'admin@bwanashamba.com', hash, 'Farm', 'Admin', 'admin', 1, 'en'
     );
     console.log('[DB] Seeded default admin: admin@bwanashamba.com / admin123');
   }
 
   const zonesCount = await dbGet('SELECT count(*) as count FROM zones');
   if (zonesCount.count === 0 || zonesCount.count === '0') {
+    const adminUser = await dbGet('SELECT id FROM users WHERE role = ?', 'admin');
+    const adminId = adminUser?.id || 1;
     const date30DaysAgo = new Date();
     date30DaysAgo.setDate(date30DaysAgo.getDate() - 30);
     const date60DaysAgo = new Date();
     date60DaysAgo.setDate(date60DaysAgo.getDate() - 60);
 
-    await dbRun('INSERT INTO zones (name, crop_type, planting_date, area_size) VALUES (?, ?, ?, ?)',
-      'Zone A', 'Tomato', date30DaysAgo.toISOString().split('T')[0], 2.5);
-    await dbRun('INSERT INTO zones (name, crop_type, planting_date, area_size) VALUES (?, ?, ?, ?)',
-      'Zone B', 'Onion', date60DaysAgo.toISOString().split('T')[0], 2.5);
+    await dbRun('INSERT INTO zones (user_id, name, crop_type, planting_date, area_size) VALUES (?, ?, ?, ?, ?)',
+      adminId, 'Zone A', 'Tomato', date30DaysAgo.toISOString().split('T')[0], 2.5);
+    await dbRun('INSERT INTO zones (user_id, name, crop_type, planting_date, area_size) VALUES (?, ?, ?, ?, ?)',
+      adminId, 'Zone B', 'Onion', date60DaysAgo.toISOString().split('T')[0], 2.5);
     console.log('[DB] Seeded initial zones.');
   }
 }
