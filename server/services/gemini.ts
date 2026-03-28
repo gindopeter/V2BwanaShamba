@@ -1,6 +1,9 @@
 import { GoogleGenAI } from '@google/genai';
-import { dbAll, dbGet } from '../db.ts';
+import { dbAll } from '../db.ts';
 
+/**
+ * Builds a snapshot of the current farm state to inject into AI prompts.
+ */
 export async function getFarmContext(userId?: number): Promise<string> {
   const zones = userId
     ? await dbAll('SELECT * FROM zones WHERE user_id = ? OR user_id IS NULL', userId)
@@ -56,58 +59,47 @@ ${logDetails || 'No logs'}
 === END FARM DATA ===`;
 }
 
-const ADK_URL = process.env.ADK_SERVICE_URL || 'http://localhost:8001';
-const ADK_TOKEN = process.env.ADK_INTERNAL_TOKEN || 'bwanashamba-internal-dev-token';
+/**
+ * Creates a short-lived ephemeral token (valid ~60 s, single use) for the
+ * Gemini Live API. The client uses this token in place of the raw API key,
+ * so the key is never exposed to the browser.
+ */
+export async function createEphemeralToken(): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('Gemini API key not configured');
 
-export async function chatViaADK(
-  message: string,
-  userId: string,
-  sessionId: string | null,
-  image?: string,
-  mimeType?: string
-): Promise<{ reply: string; adkSessionId: string; agentName: string }> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 55000);
-  try {
-    const body: any = { message, user_id: `user_${userId}`, session_id: sessionId };
-    if (image) { body.image = image; body.mime_type = mimeType || 'image/jpeg'; }
-    const resp = await fetch(`${ADK_URL}/chat`, {
+  const expireTime = new Date(Date.now() + 60_000).toISOString();
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/ephemeralTokens?key=${apiKey}`,
+    {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ADK_TOKEN}` },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    if (!resp.ok) throw new Error(`ADK returned ${resp.status}`);
-    const data = (await resp.json()) as any;
-    return { reply: data.reply, adkSessionId: data.session_id, agentName: data.agent_name };
-  } finally {
-    clearTimeout(timeout);
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        config: {
+          uses: 1,
+          expire_time: expireTime,
+          new_session_config: {
+            model: 'models/gemini-2.5-flash',
+          },
+        },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Ephemeral token request failed (${res.status}): ${body}`);
   }
+
+  const data = (await res.json()) as any;
+  if (!data.token) throw new Error('No token in ephemeral token response');
+  return data.token;
 }
 
-export function createADKStreamFetch(
-  message: string,
-  userId: string,
-  sessionId: string | null,
-  image?: string,
-  mimeType?: string
-): { promise: Promise<Response>; abort: () => void } {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90000);
-  const body: any = { message, user_id: `user_${userId}`, session_id: sessionId, stream: true };
-  if (image) { body.image = image; body.mime_type = mimeType || 'image/jpeg'; }
-  const promise = fetch(`${ADK_URL}/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ADK_TOKEN}` },
-    body: JSON.stringify(body),
-    signal: controller.signal,
-  }).then(resp => {
-    if (!resp.ok) { clearTimeout(timeout); throw new Error(`ADK returned ${resp.status}`); }
-    return resp;
-  });
-  return { promise, abort: () => { clearTimeout(timeout); controller.abort(); } };
-}
-
+/**
+ * Sends a chat request directly to Gemini (no ADK). Used as the ADK fallback.
+ */
 export async function chatViaGeminiDirect(
   message: string,
   contents: any[],
@@ -117,6 +109,7 @@ export async function chatViaGeminiDirect(
 ): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Gemini API key not configured');
+
   const ai = new GoogleGenAI({ apiKey });
   const farmContext = await getFarmContext(userId);
 
