@@ -37,8 +37,15 @@ If the ADK service is unavailable, the Node.js server falls back to direct Gemin
 
 ## Key Files
 
-- `server.ts` — Express server (port 5000), serves Vite as middleware in dev, handles all API routes including auth, proxies chat to ADK service
+- `server.ts` — Thin Express entry point (port 5000): validates env, initialises DB, sets up sessions, mounts route modules, handles `/api/engine/run-checks` and weather, serves Vite as middleware in dev, static `dist/` in production
 - `server/db.ts` — Database abstraction layer: auto-detects PostgreSQL (via `DATABASE_URL`) or SQLite, handles schema creation, migrations, and seed data. Exports async `dbAll`, `dbGet`, `dbRun`, `dbExec` methods.
+- `server/middleware/auth.ts` — `isAuthenticated` and `isAdmin` Express middleware
+- `server/constants/regions.ts` — `TANZANIA_REGIONS` lat/lon map for all 29 Tanzania regions
+- `server/services/gemini.ts` — `getFarmContext`, `chatViaGeminiDirect`, `chatViaADK`, `createADKStreamFetch` helpers
+- `server/routes/auth.ts` — All `/api/auth/*` routes (login, logout, register, profile, password, user CRUD)
+- `server/routes/zones.ts` — All `/api/zones/*` routes (CRUD, yield, irrigation)
+- `server/routes/tasks.ts` — All `/api/tasks/*` routes (list, create, status update)
+- `server/routes/chat.ts` — All `/api/chat/*` and `/api/conversations/*` routes (guest chat, authenticated chat+streaming, crop analysis, voice transcript, Gemini session)
 - `src/App.tsx` — Root component with auth state, navigation, data loading, and detail views (tasks, zones, weather forecast, water usage with per-zone/whole-farm reports)
 - `src/components/ActionQueue.tsx` — "Upcoming Task" widget: shows 15min before scheduled time, countdown at 10min, cancel/override button
 - `src/components/ZoneModal.tsx` — Add/Edit/Delete zone modal with loading states and error handling
