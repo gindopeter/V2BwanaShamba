@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { type Language, t, TANZANIA_REGIONS } from '../lib/i18n';
+import { type Language, t, TANZANIA_REGIONS, TANZANIA_DISTRICTS } from '../lib/i18n';
 
 interface RegisterProps {
   onRegister: (user: any) => void;
@@ -38,7 +38,11 @@ export default function Register({ onRegister, onBack, initialLanguage = 'en' }:
   };
 
   const handleChange = (field: string, value: string) => {
-    setForm(prev => ({ ...prev, [field]: value }));
+    setForm(prev => {
+      const next = { ...prev, [field]: value };
+      if (field === 'region') next.district = '';
+      return next;
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -55,6 +59,10 @@ export default function Register({ onRegister, onBack, initialLanguage = 'en' }:
     }
     if (method === 'phone' && !form.phone_number.trim()) {
       setError(lang === 'sw' ? 'Nambari ya simu inahitajika' : 'Phone number is required');
+      return;
+    }
+    if (!form.farm_size_acres || parseFloat(form.farm_size_acres) <= 0) {
+      setError(lang === 'sw' ? 'Ukubwa wa shamba unahitajika' : 'Farm size is required');
       return;
     }
     if (form.password.length < 6) {
@@ -97,6 +105,8 @@ export default function Register({ onRegister, onBack, initialLanguage = 'en' }:
 
   const inputClass = "w-full px-4 py-3 bg-white border-2 border-[#002c11]/10 rounded-lg text-[#002c11] text-sm font-medium transition-all duration-200 focus:border-[#035925] focus:shadow-[0_0_0_3px_rgba(3,89,37,0.1)] outline-none placeholder-[#002c11]/30";
   const labelClass = "block text-[11px] font-bold text-[#002c11]/60 mb-1.5 uppercase tracking-[0.12em]";
+
+  const availableDistricts = form.region ? (TANZANIA_DISTRICTS[form.region] || []) : [];
 
   if (step === 'language') {
     return (
@@ -246,20 +256,23 @@ export default function Register({ onRegister, onBack, initialLanguage = 'en' }:
         )}
 
         <div>
-          <label className={labelClass}>{t(lang, 'password')} * <span className="text-[#5d6c7b]/60 normal-case font-normal">({t(lang, 'passwordMin')})</span></label>
+          <label className={labelClass}>
+            {t(lang, 'password')} *
+            <span className="text-[#5d6c7b]/60 normal-case font-normal ml-1">({t(lang, 'passwordMin')})</span>
+          </label>
           <input
             type="password"
             value={form.password}
             onChange={e => handleChange('password', e.target.value)}
-            placeholder={lang === 'sw' ? 'Nywila yako' : 'Choose a password'}
+            placeholder={lang === 'sw' ? 'Neno au Namba ya Siri' : 'Choose a password'}
             className={inputClass}
             required
           />
         </div>
 
         <div className="pt-2 border-t border-[#002c11]/5">
-          <p className="text-[11px] font-bold text-[#002c11]/40 uppercase tracking-[0.12em] mb-3">
-            {t(lang, 'farmInfo')} ({lang === 'sw' ? 'si lazima' : 'optional'})
+          <p className="text-[11px] font-bold text-[#002c11]/60 uppercase tracking-[0.12em] mb-3">
+            {t(lang, 'farmInfo')}
           </p>
 
           <div className="space-y-3">
@@ -280,24 +293,38 @@ export default function Register({ onRegister, onBack, initialLanguage = 'en' }:
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelClass}>{t(lang, 'district')}</label>
-                <input
-                  type="text"
-                  value={form.district}
-                  onChange={e => handleChange('district', e.target.value)}
-                  placeholder={t(lang, 'enterDistrict')}
-                  className={inputClass}
-                />
+                {availableDistricts.length > 0 ? (
+                  <select
+                    value={form.district}
+                    onChange={e => handleChange('district', e.target.value)}
+                    className={`${inputClass} bg-white`}
+                  >
+                    <option value="">{t(lang, 'selectDistrict')}</option>
+                    {availableDistricts.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={form.district}
+                    onChange={e => handleChange('district', e.target.value)}
+                    placeholder={t(lang, 'enterDistrict')}
+                    className={inputClass}
+                  />
+                )}
               </div>
               <div>
-                <label className={labelClass}>{t(lang, 'farmSize')}</label>
+                <label className={labelClass}>{t(lang, 'farmSize')} *</label>
                 <input
                   type="number"
                   value={form.farm_size_acres}
                   onChange={e => handleChange('farm_size_acres', e.target.value)}
                   placeholder="e.g. 5"
-                  min="0"
+                  min="0.1"
                   step="0.1"
                   className={inputClass}
+                  required
                 />
               </div>
             </div>

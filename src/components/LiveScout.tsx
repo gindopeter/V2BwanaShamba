@@ -488,12 +488,12 @@ export default function LiveScout() {
         console.log('[LiveVoice] Browser speech recognition not available');
       }
 
-      const sessionRes = await fetch('/api/gemini-session');
+      const sessionRes = await fetch('/api/chat/gemini-live-token');
       const sessionData = await sessionRes.json();
-      if (!sessionRes.ok || !sessionData.apiKey) {
-        throw new Error(sessionData.error || 'Failed to get API session');
+      if (!sessionRes.ok || !sessionData.token) {
+        throw new Error(sessionData.error || 'Failed to get live session token');
       }
-      const ai = new GoogleGenAI({ apiKey: sessionData.apiKey });
+      const ai = new GoogleGenAI({ apiKey: sessionData.token });
       aiRef.current = ai;
 
       let currentAudioStream: MediaStream;

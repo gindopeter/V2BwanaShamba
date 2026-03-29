@@ -10,7 +10,9 @@ A React + Express app for managing farm operations in Tanzania. It tracks crop z
 - **Database**: Dual-mode — PostgreSQL (Cloud SQL) in production when `DATABASE_URL` is set, SQLite (`farm.db`) for local development
 - **AI**: Google Gemini (`gemini-2.5-flash`) via Google ADK multi-agent framework + `@google/genai` for live voice. Covers all horticulture crops (tomato, onion, pepper, cabbage, spinach, cucumber, watermelon, eggplant, carrot, lettuce, okra, green bean) and maize.
 - **Weather**: Open-Meteo API (free, no key) — real 7-day forecast for Malivundo (-7.1, 38.7), used by both dashboard and AI agents for fertigation timing
-- **Auth**: Admin-managed email/password login with bcryptjs + express-session (PostgreSQL via `connect-pg-simple` in prod, SQLite in dev)
+- **Auth**: Self-registration (email OR phone number) with bcryptjs + express-session. Login accepts email or phone via `WHERE email = ? OR phone_number = ?`
+- **i18n**: Full EN/SW bilingual support via `src/lib/i18n.ts` — includes `TANZANIA_DISTRICTS` map (all 29 regions with districts), `CROP_NAMES_SW` Kiswahili crop names, `getCropName()` helper
+- **Recommendations**: `/api/recommendations` endpoint calls Gemini with farm context (zones/tasks/region) and returns 3-4 AI-generated actionable recommendations. Displayed in `RecommendationsBlock.tsx` on the dashboard
 
 ## ADK Multi-Agent System
 
@@ -37,8 +39,16 @@ If the ADK service is unavailable, the Node.js server falls back to direct Gemin
 
 ## Key Files
 
-- `server.ts` — Express server (port 5000), serves Vite as middleware in dev, handles all API routes including auth, proxies chat to ADK service
+- `server.ts` — Thin Express entry point (port 5000): validates env, initialises DB, sets up sessions, mounts route modules, handles `/api/engine/run-checks` and weather, serves Vite as middleware in dev, static `dist/` in production
 - `server/db.ts` — Database abstraction layer: auto-detects PostgreSQL (via `DATABASE_URL`) or SQLite, handles schema creation, migrations, and seed data. Exports async `dbAll`, `dbGet`, `dbRun`, `dbExec` methods.
+- `server/middleware/auth.ts` — `isAuthenticated` and `isAdmin` Express middleware
+- `server/constants/regions.ts` — `TANZANIA_REGIONS` lat/lon map for all 29 Tanzania regions
+- `server/services/gemini.ts` — `getFarmContext`, `chatViaGeminiDirect`, `createEphemeralToken` (short-lived Live API token, never exposes raw key to browser)
+- `server/services/adk.ts` — `chatViaADK`, `createADKStreamFetch` (ADK multi-agent service calls)
+- `server/routes/auth.ts` — All `/api/auth/*` routes (login, logout, register, profile, password, user CRUD)
+- `server/routes/zones.ts` — All `/api/zones/*` routes (CRUD, yield, irrigation)
+- `server/routes/tasks.ts` — All `/api/tasks/*` routes (list, create, status update)
+- `server/routes/chat.ts` — All `/api/chat/*` and `/api/conversations/*` routes (guest chat, authenticated chat+streaming, crop analysis, voice transcript, `/gemini-live-token` ephemeral token endpoint)
 - `src/App.tsx` — Root component with auth state, navigation, data loading, and detail views (tasks, zones, weather forecast, water usage with per-zone/whole-farm reports)
 - `src/components/ActionQueue.tsx` — "Upcoming Task" widget: shows 15min before scheduled time, countdown at 10min, cancel/override button
 - `src/components/ZoneModal.tsx` — Add/Edit/Delete zone modal with loading states and error handling

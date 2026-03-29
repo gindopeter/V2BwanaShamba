@@ -8,6 +8,7 @@ import FarmMap from './components/FarmMap';
 import ActionQueue from './components/ActionQueue';
 import SettingsPage from './components/SettingsPage';
 import ZoneModal from './components/ZoneModal';
+import RecommendationsBlock from './components/RecommendationsBlock';
 import { fetchZones, fetchTasks, runEngineChecks, updateTaskStatus, createZone, updateZone, deleteZone, Zone, Task } from './lib/api';
 import { RefreshCw, Plus, Loader2, ArrowLeft, MessageSquare, ChevronRight, BarChart2 } from 'lucide-react';
 import { type Language, t } from './lib/i18n';
@@ -82,6 +83,7 @@ export default function App() {
       await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(task),
       });
       setShowNewTask(false);
@@ -284,7 +286,7 @@ export default function App() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {zones.slice(0, 3).map(zone => (
-                    <ZoneCard key={zone.id} zone={zone} onUpdate={loadData} />
+                    <ZoneCard key={zone.id} zone={zone} onUpdate={loadData} lang={lang} onEdit={z => setEditingZone(z)} />
                   ))}
                   {zones.length === 0 && (
                     <button
@@ -297,6 +299,8 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            <RecommendationsBlock lang={lang} />
 
             <ActionQueue tasks={tasks} zones={zones} />
           </div>
@@ -327,6 +331,7 @@ export default function App() {
             onClose={() => setShowNewTask(false)}
             onSave={handleCreateTask}
             zones={zones}
+            lang={lang}
           />
         )}
 
@@ -334,6 +339,8 @@ export default function App() {
           <ZoneModal
             onClose={() => setShowZoneModal(false)}
             onSave={handleCreateZone}
+            lang={lang}
+            maxAreaSize={user?.farm_size_acres}
           />
         )}
 
@@ -343,6 +350,8 @@ export default function App() {
             onClose={() => setEditingZone(null)}
             onSave={handleUpdateZone}
             onDelete={handleDeleteZone}
+            lang={lang}
+            maxAreaSize={user?.farm_size_acres}
           />
         )}
       </div>
@@ -409,7 +418,7 @@ function ZonesDetailView({ zones, onUpdate, onEdit, onAdd, lang }: { zones: Zone
         <Plus className="w-4 h-4" /> {t(lang, 'addNewZone')}
       </button>
       {zones.map(zone => (
-        <ZoneCard key={zone.id} zone={zone} onUpdate={onUpdate} onEdit={onEdit} />
+        <ZoneCard key={zone.id} zone={zone} onUpdate={onUpdate} onEdit={onEdit} lang={lang} />
       ))}
       {zones.length === 0 && (
         <div className="text-center py-12 text-[#5d6c7b]">
