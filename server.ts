@@ -187,6 +187,45 @@ async function startServer() {
     res.json({ status: 'checked', weather, zones_checked: zones.length });
   });
 
+  app.post('/api/recommendations', isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const language: string = req.body?.language || 'en';
+
+      const [userProfile, zones, tasks] = await Promise.all([
+        dbGet('SELECT first_name, region, district, farm_size_acres FROM users WHERE id = ?', userId),
+        dbAll('SELECT name, crop_type, area_size, current_growth_day FROM zones WHERE user_id = ? AND status = ?', userId, 'Active'),
+        dbAll("SELECT task_type, scheduled_time, status FROM tasks WHERE zone_id IN (SELECT id FROM zones WHERE user_id = ?) AND status = 'Pending' ORDER BY scheduled_time ASC LIMIT 5", userId),
+      ]);
+
+      const farmContext = {
+        farmer: userProfile?.first_name || 'Farmer',
+        region: userProfile?.region || 'Tanzania',
+        farmSize: userProfile?.farm_size_acres || 'Unknown',
+        zones: zones.map((z: any) => `${z.name} (${z.crop_type}, day ${z.current_growth_day}, ${z.area_size} acres)`).join('; ') || 'No active zones',
+        pendingTasks: tasks.map((t: any) => `${t.task_type} on ${new Date(t.scheduled_time).toLocaleDateString()}`).join('; ') || 'No pending tasks',
+      };
+
+      const isSwahili = language === 'sw';
+      const prompt = isSwahili
+        ? `Wewe ni mshauri wa kilimo bora wa Tanzania. Mkulima ${farmContext.farmer} ana shamba la ${farmContext.farmSize} ekari katika ${farmContext.region}. Maeneo yenye mazao: ${farmContext.zones}. Kazi zinazosubiri: ${farmContext.pendingTasks}.\n\nToa mapendekezo 3-4 ya vitendo vya haraka kwa mkulima huyu. Jibu kwa JSON tu:\n{"recommendations": [{"priority": "high|medium|low", "icon": "emoji", "title": "kichwa kifupi", "description": "maelezo fupi"}]}`
+        : `You are a top agricultural advisor for Tanzania. Farmer ${farmContext.farmer} has a ${farmContext.farmSize}-acre farm in ${farmContext.region}. Active zones: ${farmContext.zones}. Pending tasks: ${farmContext.pendingTasks}.\n\nProvide 3-4 specific, actionable recommendations. Reply ONLY with JSON:\n{"recommendations": [{"priority": "high|medium|low", "icon": "emoji", "title": "short title", "description": "brief description"}]}`;
+
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+      const model = genai.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+      const result = await model.generateContent(prompt);
+      const text = result.response.text().replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const parsed = JSON.parse(text);
+
+      res.json({ recommendations: parsed.recommendations || [] });
+    } catch (err: any) {
+      console.error('[recommendations] error:', err.message);
+      res.status(500).json({ recommendations: [] });
+    }
+  });
+
   if (process.env.NODE_ENV === 'production') {
     const distPath = path.join(__dirname, 'dist');
     app.use(express.static(distPath));

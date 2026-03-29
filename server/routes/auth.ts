@@ -8,13 +8,17 @@ const router = Router();
 // ─── POST /api/auth/login ──────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, phone_number, password } = req.body;
+    const identifier = (email || phone_number || '').trim();
 
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required' });
+    if (!identifier || !password) {
+      return res.status(400).json({ message: 'Email or phone number, and password are required' });
     }
 
-    const user = await dbGet('SELECT * FROM users WHERE email = ?', email);
+    const user = await dbGet(
+      'SELECT * FROM users WHERE email = ? OR phone_number = ?',
+      identifier, identifier
+    );
 
     if (!user || !bcrypt.compareSync(password, user.password_hash)) {
       return res.status(401).json({ message: 'Invalid email or password' });

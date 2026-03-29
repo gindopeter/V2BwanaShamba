@@ -4,11 +4,6 @@ import { isAuthenticated } from '../middleware/auth.ts';
 
 const router = Router();
 
-const VALID_TASK_TYPES = [
-  'Irrigation', 'Fertigation', 'Pest Scouting', 'Harvesting',
-  'Planting', 'Weeding', 'Soil Testing', 'Other',
-];
-
 const VALID_STATUSES = ['Pending', 'In Progress', 'Completed', 'Cancelled'];
 
 // ─── GET /api/tasks ────────────────────────────────────────────────────────────
@@ -35,18 +30,13 @@ router.post('/', isAuthenticated, async (req, res) => {
     if (!zone_id || isNaN(Number(zone_id))) {
       return res.status(400).json({ message: 'A valid zone_id is required' });
     }
-    if (!task_type || !VALID_TASK_TYPES.includes(task_type)) {
-      return res.status(400).json({
-        message: `task_type must be one of: ${VALID_TASK_TYPES.join(', ')}`,
-      });
+    if (!task_type || typeof task_type !== 'string' || task_type.trim().length === 0) {
+      return res.status(400).json({ message: 'task_type is required' });
     }
     if (!scheduled_time || isNaN(Date.parse(scheduled_time))) {
       return res.status(400).json({ message: 'A valid scheduled_time (ISO string) is required' });
     }
-    const parsedDuration = parseInt(duration_minutes, 10);
-    if (isNaN(parsedDuration) || parsedDuration <= 0) {
-      return res.status(400).json({ message: 'duration_minutes must be a positive integer' });
-    }
+    const parsedDuration = duration_minutes != null ? parseInt(duration_minutes, 10) : null;
 
     const zone = await dbGet('SELECT id FROM zones WHERE id = ?', Number(zone_id));
     if (!zone) {
@@ -56,7 +46,7 @@ router.post('/', isAuthenticated, async (req, res) => {
     const info = await dbRun(
       'INSERT INTO tasks (zone_id, task_type, scheduled_time, duration_minutes, reasoning) VALUES (?, ?, ?, ?, ?)',
       Number(zone_id),
-      task_type,
+      task_type.trim(),
       scheduled_time,
       parsedDuration,
       reasoning || null
