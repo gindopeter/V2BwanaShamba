@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Camera, Upload, Loader2, Mic, Square, Send, ArrowUp, Paperclip, X, Volume2, Image as ImageIcon, Plus, MessageSquare, Trash2, ChevronLeft, ChevronRight, SwitchCamera } from 'lucide-react';
-import { GoogleGenAI, Modality } from '@google/genai';
 import ReactMarkdown from 'react-markdown';
 
 function base64ToFloat32(base64: string): Float32Array {
@@ -64,8 +63,7 @@ export default function LiveScout() {
   const audioStreamRef = useRef<MediaStream | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const aiRef = useRef<any>(null);
-  const sessionRef = useRef<any>(null);
+  const liveWsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const nextPlayTimeRef = useRef<number>(0);
@@ -100,7 +98,7 @@ export default function LiveScout() {
         if (processorRef.current) { processorRef.current.disconnect(); processorRef.current = null; }
         if (audioStreamRef.current) { audioStreamRef.current.getTracks().forEach(t => t.stop()); audioStreamRef.current = null; }
         if (frameIntervalRef.current) { clearInterval(frameIntervalRef.current); frameIntervalRef.current = null; }
-        if (sessionRef.current) { sessionRef.current.then((s: any) => s.close()).catch(() => {}); sessionRef.current = null; }
+        if (liveWsRef.current) { try { liveWsRef.current.close(); } catch {} liveWsRef.current = null; }
       }
       if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); }
     };
@@ -442,12 +440,10 @@ export default function LiveScout() {
               const transcript = event.results[i][0].transcript.trim();
               if (transcript) {
                 if (isAiSpeakingRef.current || aiJustFinishedRef.current) {
-                  console.log('[LiveVoice] AI spoken words:', transcript);
                   setMessages(prev => [...prev, { role: 'ai', text: transcript }]);
                   voiceMessagesRef.current.push({ role: 'ai', text: transcript });
                   aiJustFinishedRef.current = false;
                 } else {
-                  console.log('[LiveVoice] User speech:', transcript);
                   setMessages(prev => [...prev, { role: 'user', text: transcript }]);
                   voiceMessagesRef.current.push({ role: 'user', text: transcript });
                 }
@@ -456,7 +452,7 @@ export default function LiveScout() {
           }
         };
         recognition.onerror = (event: any) => {
-          if (event.error !== 'aborted') {
+          if (event.error !== 'aborted' && event.error !== 'no-speech') {
             console.log('[LiveVoice] Speech recognition error:', event.error);
           }
         };
@@ -468,30 +464,20 @@ export default function LiveScout() {
         try {
           recognition.start();
           speechRecognitionRef.current = recognition;
-          console.log('[LiveVoice] Browser speech recognition started');
         } catch (err) {
           console.log('[LiveVoice] Could not start speech recognition:', err);
         }
-      } else {
-        console.log('[LiveVoice] Browser speech recognition not available');
       }
-
-      const sessionRes = await fetch('/api/chat/gemini-live-token');
-      const sessionData = await sessionRes.json();
-      if (!sessionRes.ok || !sessionData.token) {
-        throw new Error(sessionData.error || 'Failed to get live session token');
-      }
-      const ai = new GoogleGenAI({ apiKey: sessionData.token });
-      aiRef.current = ai;
 
       let currentAudioStream: MediaStream;
       try {
         currentAudioStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
         audioStreamRef.current = currentAudioStream;
       } catch (err: any) {
-        console.error("Live API Error:", err);
+        console.error('[LiveVoice] Microphone error:', err);
         alert(`Microphone access error: ${err.message || 'Denied or unavailable.'}`);
         setIsLiveVoice(false);
+        isLiveVoiceRef.current = false;
         return;
       }
 
@@ -502,234 +488,179 @@ export default function LiveScout() {
       const source = audioCtx.createMediaStreamSource(currentAudioStream);
       const processor = audioCtx.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
-
       source.connect(processor);
       processor.connect(audioCtx.destination);
+
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${wsProtocol}//${window.location.host}/api/live-voice-ws`;
+      console.log('[LiveVoice] Connecting to proxy:', wsUrl);
+      const ws = new WebSocket(wsUrl);
+      liveWsRef.current = ws;
 
       const VAD_THRESHOLD = 0.012;
       const VAD_FRAMES_TO_TRIGGER = 2;
       let vadActiveFrames = 0;
       let audioChunksSent = 0;
 
-      const liveConfig = {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } } },
-        systemInstruction: "You are BwanaShamba, an AI farm supervisor helping farmers across Tanzania manage their farms. You assist with pest identification, irrigation scheduling, crop management, harvest timing, and market strategies for horticulture crops (tomatoes, onions, peppers, cabbage, spinach, cucumbers, watermelon, eggplant, carrots, lettuce, okra, green beans) and maize. Tailor your advice to the farmer's specific region and crops. Keep answers practical, concise, and actionable. IMPORTANT LANGUAGE RULE: Match the user's language exactly. If they speak Kiswahili, respond entirely in Kiswahili. If they speak English, respond in English. Switch immediately when they switch languages.",
-        outputTranscription: {},
-        inputTranscription: {},
+      ws.onopen = () => {
+        console.log('[LiveVoice] Server WebSocket opened');
       };
 
-      const startAudioProcessing = (resolvedSession: any) => {
-        console.log('[LiveVoice] Starting audio processing');
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
 
-        processor.onaudioprocess = (e) => {
-          if (!isLiveVoiceRef.current || !sessionReadyRef.current) return;
-          const inputData = e.inputBuffer.getChannelData(0);
-
-          let sum = 0;
-          for (let i = 0; i < inputData.length; i++) {
-            sum += Math.abs(inputData[i]);
-          }
-          const avgAmplitude = sum / inputData.length;
-
-          if (avgAmplitude > VAD_THRESHOLD) {
-            vadActiveFrames++;
-            if (vadActiveFrames >= VAD_FRAMES_TO_TRIGGER && isAiSpeakingRef.current) {
-              stopAiAudio();
-            }
-          } else {
-            vadActiveFrames = 0;
-          }
-
-          try {
-            const downsampled = downsample(inputData, audioCtx.sampleRate, 16000);
-            const base64 = float32ToBase64(downsampled);
-            resolvedSession.sendRealtimeInput({ media: { data: base64, mimeType: 'audio/pcm;rate=16000' } });
-            audioChunksSent++;
-            if (audioChunksSent % 50 === 1) {
-              console.log(`[LiveVoice] Audio chunks sent: ${audioChunksSent}, amplitude: ${avgAmplitude.toFixed(4)}, sampleRate: ${audioCtx.sampleRate}`);
-            }
-          } catch (err) {
-            console.error('[LiveVoice] Error sending audio:', err);
-          }
-        };
-
-        frameIntervalRef.current = setInterval(() => {
-          if (!isLiveVoiceRef.current || !sessionReadyRef.current) return;
-          if (videoRef.current && canvasRef.current && isCameraActiveRef.current) {
-            const ctx = canvasRef.current.getContext('2d');
-            if (ctx && videoRef.current.videoWidth > 0) {
-              canvasRef.current.width = 640;
-              canvasRef.current.height = Math.round((videoRef.current.videoHeight / videoRef.current.videoWidth) * 640);
-              ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
-              const base64Image = canvasRef.current.toDataURL('image/jpeg', 0.5).split(',')[1];
-              try {
-                resolvedSession.sendRealtimeInput({ media: { data: base64Image, mimeType: 'image/jpeg' } });
-                console.log(`[LiveVoice] Camera frame sent (${videoRef.current.videoWidth}x${videoRef.current.videoHeight})`);
-              } catch (err) {
-                console.error('[LiveVoice] Error sending frame:', err);
-              }
-            }
-          }
-        }, 3000);
-      };
-
-      const liveCallbacks = {
-        onopen: () => {
-          console.log('[LiveVoice] WebSocket opened');
-        },
-        onmessage: (message: any) => {
-          const msgKeys = Object.keys(message || {});
-          const scKeys = message.serverContent ? Object.keys(message.serverContent) : [];
-          if (!message.serverContent?.modelTurn?.parts?.[0]?.inlineData) {
-            console.log('[LiveVoice] Message keys:', msgKeys.join(','), '| serverContent keys:', scKeys.join(','));
-          }
-
-          if (message.setupComplete) {
-            console.log('[LiveVoice] Setup complete - session ready');
+          if (msg.type === 'ready') {
+            console.log('[LiveVoice] Session ready');
             sessionReadyRef.current = true;
             setMessages(prev => [...prev, { role: 'system', text: 'Live voice session started. Speak to your AI assistant.' }]);
+
+            processor.onaudioprocess = (e) => {
+              if (!isLiveVoiceRef.current || !sessionReadyRef.current) return;
+              const inputData = e.inputBuffer.getChannelData(0);
+              let sum = 0;
+              for (let i = 0; i < inputData.length; i++) sum += Math.abs(inputData[i]);
+              const avgAmplitude = sum / inputData.length;
+              if (avgAmplitude > VAD_THRESHOLD) {
+                vadActiveFrames++;
+                if (vadActiveFrames >= VAD_FRAMES_TO_TRIGGER && isAiSpeakingRef.current) stopAiAudio();
+              } else {
+                vadActiveFrames = 0;
+              }
+              try {
+                const downsampled = downsample(inputData, audioCtx.sampleRate, 16000);
+                const base64 = float32ToBase64(downsampled);
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: 'audio', data: base64 }));
+                  audioChunksSent++;
+                  if (audioChunksSent % 100 === 1) {
+                    console.log(`[LiveVoice] Audio chunks: ${audioChunksSent}, amplitude: ${avgAmplitude.toFixed(4)}`);
+                  }
+                }
+              } catch (err) {
+                console.error('[LiveVoice] Error sending audio:', err);
+              }
+            };
+
+            frameIntervalRef.current = setInterval(() => {
+              if (!isLiveVoiceRef.current || !sessionReadyRef.current) return;
+              if (videoRef.current && canvasRef.current && isCameraActiveRef.current) {
+                const ctx = canvasRef.current.getContext('2d');
+                if (ctx && videoRef.current.videoWidth > 0) {
+                  canvasRef.current.width = 640;
+                  canvasRef.current.height = Math.round((videoRef.current.videoHeight / videoRef.current.videoWidth) * 640);
+                  ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+                  const base64Image = canvasRef.current.toDataURL('image/jpeg', 0.5).split(',')[1];
+                  if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'image', data: base64Image }));
+                  }
+                }
+              }
+            }, 3000);
+
             return;
           }
 
-          if (message.serverContent?.interrupted) {
-            console.log('[LiveVoice] AI interrupted by user');
+          if (msg.type === 'interrupted') {
             stopAiAudio();
             return;
           }
 
-          const parts = message.serverContent?.modelTurn?.parts;
-          if (parts) {
-            for (const part of parts) {
-              if (part.inlineData?.data) {
-                isAiSpeakingRef.current = true;
-                aiJustFinishedRef.current = false;
-                try {
-                  const float32Data = base64ToFloat32(part.inlineData.data);
-                  const buffer = audioCtx.createBuffer(1, float32Data.length, 24000);
-                  buffer.getChannelData(0).set(float32Data);
-                  const playSource = audioCtx.createBufferSource();
-                  playSource.buffer = buffer;
-                  playSource.connect(audioCtx.destination);
-
-                  activeSourcesRef.current.push(playSource);
-                  playSource.onended = () => {
-                    activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== playSource);
-                    if (activeSourcesRef.current.length === 0) {
-                      isAiSpeakingRef.current = false;
-                    }
-                  };
-
-                  const startTime = Math.max(audioCtx.currentTime, nextPlayTimeRef.current);
-                  playSource.start(startTime);
-                  nextPlayTimeRef.current = startTime + buffer.duration;
-                } catch (err) {
-                  console.error('[LiveVoice] Error playing audio:', err);
-                }
-              }
-
-              if (part.text) {
-                console.log('[LiveVoice] Got model text (thinking):', part.text.substring(0, 80));
-                const title = part.text.match(/\*\*([^*]+)\*\*/)?.[1] || '';
-                if (title) {
-                  setMessages(prev => [...prev, { role: 'ai', text: `${title}` }]);
-                  voiceMessagesRef.current.push({ role: 'ai', text: title });
-                }
-              }
+          if (msg.type === 'audio' && msg.data) {
+            isAiSpeakingRef.current = true;
+            aiJustFinishedRef.current = false;
+            try {
+              const float32Data = base64ToFloat32(msg.data);
+              const buffer = audioCtx.createBuffer(1, float32Data.length, 24000);
+              buffer.getChannelData(0).set(float32Data);
+              const playSource = audioCtx.createBufferSource();
+              playSource.buffer = buffer;
+              playSource.connect(audioCtx.destination);
+              activeSourcesRef.current.push(playSource);
+              playSource.onended = () => {
+                activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== playSource);
+                if (activeSourcesRef.current.length === 0) isAiSpeakingRef.current = false;
+              };
+              const startTime = Math.max(audioCtx.currentTime, nextPlayTimeRef.current);
+              playSource.start(startTime);
+              nextPlayTimeRef.current = startTime + buffer.duration;
+            } catch (err) {
+              console.error('[LiveVoice] Error playing audio:', err);
             }
+            return;
           }
 
-          if (message.serverContent?.outputTranscription?.text) {
-            const aiText = message.serverContent.outputTranscription.text;
-            console.log('[LiveVoice] AI transcript:', aiText.substring(0, 80));
+          if (msg.type === 'output_transcript' && msg.text) {
+            console.log('[LiveVoice] AI transcript:', msg.text.substring(0, 80));
             setMessages(prev => {
               const last = prev[prev.length - 1];
-              if (last && last.role === 'ai' && last._voiceTranscript) {
+              if (last && last.role === 'ai' && (last as any)._voiceTranscript) {
                 const updated = [...prev];
-                updated[updated.length - 1] = { role: 'ai', text: last.text + aiText, _voiceTranscript: true } as any;
+                updated[updated.length - 1] = { role: 'ai', text: last.text + msg.text, _voiceTranscript: true } as any;
                 return updated;
               }
-              return [...prev, { role: 'ai', text: aiText, _voiceTranscript: true } as any];
+              return [...prev, { role: 'ai', text: msg.text, _voiceTranscript: true } as any];
             });
-            voiceMessagesRef.current.push({ role: 'ai', text: aiText });
+            voiceMessagesRef.current.push({ role: 'ai', text: msg.text });
+            return;
           }
 
-          if (message.serverContent?.inputTranscription?.text) {
-            const userText = message.serverContent.inputTranscription.text;
-            console.log('[LiveVoice] User transcript:', userText.substring(0, 80));
+          if (msg.type === 'input_transcript' && msg.text) {
+            console.log('[LiveVoice] User transcript:', msg.text.substring(0, 80));
             setMessages(prev => {
               const last = prev[prev.length - 1];
-              if (last && last.role === 'user' && last._voiceTranscript) {
+              if (last && last.role === 'user' && (last as any)._voiceTranscript) {
                 const updated = [...prev];
-                updated[updated.length - 1] = { role: 'user', text: last.text + userText, _voiceTranscript: true } as any;
+                updated[updated.length - 1] = { role: 'user', text: last.text + msg.text, _voiceTranscript: true } as any;
                 return updated;
               }
-              return [...prev, { role: 'user', text: userText, _voiceTranscript: true } as any];
+              return [...prev, { role: 'user', text: msg.text, _voiceTranscript: true } as any];
             });
-            voiceMessagesRef.current.push({ role: 'user', text: userText });
+            voiceMessagesRef.current.push({ role: 'user', text: msg.text });
+            return;
           }
 
-          if (message.serverContent?.turnComplete) {
-            console.log('[LiveVoice] Turn complete');
+          if (msg.type === 'turn_complete') {
             isAiSpeakingRef.current = false;
             aiJustFinishedRef.current = true;
-            setTimeout(() => {
-              aiJustFinishedRef.current = false;
-            }, 3000);
+            setTimeout(() => { aiJustFinishedRef.current = false; }, 3000);
+            return;
           }
-        },
-        onerror: (error: any) => {
-          console.error('[LiveVoice] Session error:', error);
-          const errMsg = error?.message || error?.toString?.() || 'Unknown connection error';
-          if (isLiveVoiceRef.current) {
-            setMessages(prev => [...prev, { role: 'system', text: `Live voice error: ${errMsg}` }]);
-            stopLiveVoice();
+
+          if (msg.type === 'error') {
+            console.error('[LiveVoice] Server error:', msg.message);
+            if (isLiveVoiceRef.current) {
+              setMessages(prev => [...prev, { role: 'system', text: `Live voice error: ${msg.message}` }]);
+              stopLiveVoice();
+            }
+            return;
           }
-        },
-        onclose: (event: any) => {
-          console.log('[LiveVoice] Session closed', event?.code, event?.reason);
-          sessionReadyRef.current = false;
-          if (isLiveVoiceRef.current) {
-            const reason = event?.reason || '';
-            setMessages(prev => [...prev, { role: 'system', text: reason ? `Live session ended: ${reason}` : 'Live session ended.' }]);
-            stopLiveVoice();
-          }
+        } catch (err) {
+          console.error('[LiveVoice] Error parsing server message:', err);
         }
       };
 
-      const LIVE_MODELS = [
-        "gemini-2.0-flash-live-001",
-        "gemini-2.0-flash-exp",
-      ];
-
-      let resolvedSession: any = null;
-      let lastError: any = null;
-
-      for (const model of LIVE_MODELS) {
-        try {
-          console.log(`[LiveVoice] Trying model: ${model}`);
-          resolvedSession = await ai.live.connect({
-            model,
-            config: liveConfig,
-            callbacks: liveCallbacks,
-          });
-          console.log(`[LiveVoice] Connected with model: ${model}`);
-          sessionRef.current = Promise.resolve(resolvedSession);
-          startAudioProcessing(resolvedSession);
-          break;
-        } catch (err: any) {
-          console.warn(`[LiveVoice] Model ${model} failed:`, err?.message || err);
-          lastError = err;
+      ws.onerror = (event) => {
+        console.error('[LiveVoice] WebSocket error:', event);
+        if (isLiveVoiceRef.current) {
+          setMessages(prev => [...prev, { role: 'system', text: 'Live voice connection error.' }]);
+          stopLiveVoice();
         }
-      }
+      };
 
-      if (!resolvedSession) {
-        throw lastError || new Error('All live voice models failed to connect');
-      }
+      ws.onclose = (event) => {
+        console.log('[LiveVoice] WebSocket closed:', event.code, event.reason);
+        sessionReadyRef.current = false;
+        if (isLiveVoiceRef.current) {
+          const reason = event.reason || '';
+          setMessages(prev => [...prev, { role: 'system', text: reason ? `Live session ended: ${reason}` : 'Live session ended.' }]);
+          stopLiveVoice();
+        }
+      };
 
     } catch (err: any) {
-      console.error("Live API Error:", err);
-      alert(`Failed to start Live Session: ${err.message || 'Unknown error'}`);
+      console.error('[LiveVoice] Fatal error:', err);
+      alert(`Failed to start live voice: ${err.message || 'Unknown error'}`);
       stopLiveVoice();
     }
   };
@@ -765,7 +696,7 @@ export default function LiveScout() {
 
   const stopLiveVoice = () => {
     const hasMessagesToSave = voiceMessagesRef.current.length > 0;
-    if (!isLiveVoiceRef.current && !processorRef.current && !audioStreamRef.current && !sessionRef.current) {
+    if (!isLiveVoiceRef.current && !processorRef.current && !audioStreamRef.current && !liveWsRef.current) {
       if (hasMessagesToSave) saveVoiceTranscript();
       return;
     }
@@ -789,9 +720,9 @@ export default function LiveScout() {
       audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
     }
-    if (sessionRef.current) {
-      sessionRef.current.then((session: any) => session.close()).catch(() => {});
-      sessionRef.current = null;
+    if (liveWsRef.current) {
+      try { liveWsRef.current.close(); } catch {}
+      liveWsRef.current = null;
     }
     if (speechRecognitionRef.current) {
       try { speechRecognitionRef.current.stop(); } catch {}

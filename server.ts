@@ -1,8 +1,10 @@
 import 'dotenv/config';
+import http from 'http';
 import express from 'express';
 import session from 'express-session';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { setupLiveVoiceProxy } from './server/liveVoiceProxy.ts';
 
 import { initDatabase, isPostgres, getSqliteDb, getPgPool, dbAll, dbGet } from './server/db.ts';
 import { isAuthenticated } from './server/middleware/auth.ts';
@@ -73,31 +75,31 @@ async function startServer() {
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
 
+  let sessionMiddleware: express.RequestHandler;
+
   if (isPostgres) {
     const connectPgSimple = (await import('connect-pg-simple')).default;
     const PgStore = connectPgSimple(session);
-    app.use(
-      session({
-        secret: sessionSecret,
-        store: new PgStore({ pool: getPgPool(), createTableIfMissing: true }),
-        resave: false,
-        saveUninitialized: false,
-        cookie: sessionCookieConfig,
-      })
-    );
+    sessionMiddleware = session({
+      secret: sessionSecret,
+      store: new PgStore({ pool: getPgPool(), createTableIfMissing: true }),
+      resave: false,
+      saveUninitialized: false,
+      cookie: sessionCookieConfig,
+    });
+    app.use(sessionMiddleware);
     console.log('[startup] Using PostgreSQL session store');
   } else {
     const BetterSqlite3SessionStore = (await import('better-sqlite3-session-store')).default;
     const SqliteStore = BetterSqlite3SessionStore(session);
-    app.use(
-      session({
-        secret: sessionSecret,
-        store: new SqliteStore({ client: getSqliteDb(), expired: { clear: true, intervalMs: 900000 } }),
-        resave: false,
-        saveUninitialized: false,
-        cookie: sessionCookieConfig,
-      })
-    );
+    sessionMiddleware = session({
+      secret: sessionSecret,
+      store: new SqliteStore({ client: getSqliteDb(), expired: { clear: true, intervalMs: 900000 } }),
+      resave: false,
+      saveUninitialized: false,
+      cookie: sessionCookieConfig,
+    });
+    app.use(sessionMiddleware);
     console.log('[startup] Using SQLite session store');
   }
 
@@ -255,7 +257,10 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
-  app.listen(port, () => {
+  const httpServer = http.createServer(app);
+  setupLiveVoiceProxy(httpServer, sessionMiddleware);
+
+  httpServer.listen(port, () => {
     console.log(`[startup] Server running on port ${port}`);
   });
 }
