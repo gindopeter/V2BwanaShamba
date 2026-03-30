@@ -3,17 +3,17 @@ import { Plus, Map as MapIcon } from 'lucide-react';
 import ZoneCard from './ZoneCard';
 import { getCropConfig } from './ZoneCard';
 
-const TOTAL_FARM_ACRES = 5;
-
-export default function FarmMap({ zones, onUpdate, onEdit, onAdd }: { zones: Zone[]; onUpdate: () => void; onEdit: (z: Zone) => void; onAdd: () => void }) {
+export default function FarmMap({ zones, onUpdate, onEdit, onAdd, farmSizeAcres, lang }: { zones: Zone[]; onUpdate: () => void; onEdit: (z: Zone) => void; onAdd: () => void; farmSizeAcres?: number | null; lang?: string }) {
   const activeAcres = zones.reduce((sum, z) => sum + z.area_size, 0);
-  const inactiveAcres = Math.max(0, TOTAL_FARM_ACRES - activeAcres);
+  const totalAcres = (farmSizeAcres && farmSizeAcres > 0) ? farmSizeAcres : Math.max(activeAcres, 1);
+  const inactiveAcres = Math.max(0, totalAcres - activeAcres);
+  const acresLabel = lang === 'sw' ? 'Ekari' : 'Acres';
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-black text-[#002c11] flex items-center gap-2" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
-          <MapIcon className="text-[#035925]" /> The Farm ({TOTAL_FARM_ACRES} Acres)
+          <MapIcon className="text-[#035925]" /> The Farm ({totalAcres} {acresLabel})
         </h2>
       </div>
 
@@ -32,9 +32,9 @@ export default function FarmMap({ zones, onUpdate, onEdit, onAdd }: { zones: Zon
         </div>
         <div className="bg-white rounded-xl p-4 border-l-[3px] border-l-[#fc8e44] shadow-sm">
           <span className="text-lg">📊</span>
-          <p className="text-[22px] font-black text-[#002c11] mt-1" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>{Math.round((activeAcres / TOTAL_FARM_ACRES) * 100)}%</p>
+          <p className="text-[22px] font-black text-[#002c11] mt-1" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>{Math.round((activeAcres / totalAcres) * 100)}%</p>
           <p className="text-[11px] font-bold text-[#002c11]/60">Utilization</p>
-          <p className="text-[10px] text-[#5d6c7b]">{activeAcres.toFixed(1)} of {TOTAL_FARM_ACRES} acres</p>
+          <p className="text-[10px] text-[#5d6c7b]">{activeAcres.toFixed(1)} of {totalAcres} {acresLabel.toLowerCase()}</p>
         </div>
         <div className="bg-white rounded-xl p-4 border-l-[3px] border-l-blue-500 shadow-sm">
           <span className="text-lg">💧</span>
@@ -48,7 +48,7 @@ export default function FarmMap({ zones, onUpdate, onEdit, onAdd }: { zones: Zon
         <h3 className="text-sm font-black text-[#002c11] mb-3" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>Farm Allocation</h3>
         <div className="w-full h-8 bg-[#002c11]/[0.06] rounded-full overflow-hidden flex">
           {zones.map(z => {
-            const pct = (z.area_size / TOTAL_FARM_ACRES) * 100;
+            const pct = (z.area_size / totalAcres) * 100;
             const { emoji } = getCropConfig(z.crop_type);
             return (
               <div
@@ -64,9 +64,9 @@ export default function FarmMap({ zones, onUpdate, onEdit, onAdd }: { zones: Zon
           {inactiveAcres > 0 && (
             <div
               className="h-full bg-[#002c11]/[0.08] flex items-center justify-center text-[10px] font-bold text-[#5d6c7b]"
-              style={{ width: `${(inactiveAcres / TOTAL_FARM_ACRES) * 100}%` }}
+              style={{ width: `${(inactiveAcres / totalAcres) * 100}%` }}
             >
-              {(inactiveAcres / TOTAL_FARM_ACRES) * 100 > 10 && <span>Inactive</span>}
+              {(inactiveAcres / totalAcres) * 100 > 10 && <span>Inactive</span>}
             </div>
           )}
         </div>

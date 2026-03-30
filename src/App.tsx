@@ -323,7 +323,7 @@ export default function App() {
         )}
 
         {currentView === 'assistant' && <LiveScout />}
-        {currentView === 'map' && <FarmMap zones={zones} onUpdate={loadData} onEdit={z => setEditingZone(z)} onAdd={() => setShowZoneModal(true)} />}
+        {currentView === 'map' && <FarmMap zones={zones} onUpdate={loadData} onEdit={z => setEditingZone(z)} onAdd={() => setShowZoneModal(true)} farmSizeAcres={user?.farm_size_acres} lang={lang} />}
         {currentView === 'settings' && <SettingsPage user={user} onUserUpdate={(u) => setUser(u)} lang={lang} />}
 
         {showNewTask && (
