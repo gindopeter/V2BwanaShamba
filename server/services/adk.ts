@@ -5,12 +5,18 @@
 
 const ADK_URL = process.env.ADK_SERVICE_URL || 'http://localhost:8001';
 
-// Removed hardcoded fallback token. The server will fail loudly if
-// ADK_INTERNAL_TOKEN is missing rather than silently using a public default.
-// (Token is validated at server startup in server.ts)
+// Same dev default as adk_service/main.py so the two services stay in sync
+// without requiring ADK_INTERNAL_TOKEN to be set in development.
+const ADK_DEV_DEFAULT_TOKEN = 'bwanashamba-internal-dev-token';
+
 function getAdkToken(): string {
   const token = process.env.ADK_INTERNAL_TOKEN;
-  if (!token) throw new Error('ADK_INTERNAL_TOKEN is not set');
+  if (!token) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('ADK_INTERNAL_TOKEN must be set in production');
+    }
+    return ADK_DEV_DEFAULT_TOKEN;
+  }
   return token;
 }
 

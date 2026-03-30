@@ -1,6 +1,103 @@
 import { GoogleGenAI } from '@google/genai';
-import { dbAll } from '../db.ts';
+import { dbAll, dbGet } from '../db.ts';
 import { getDaysToHarvest, getGrowthStage } from '../constants/crops.ts';
+import { TANZANIA_DISTRICT_COORDS } from '../constants/district_coords.ts';
+
+// Region-centre fallback coords (first/main city per region)
+const REGION_FALLBACK: Record<string, { lat: number; lon: number }> = {
+  'Arusha': { lat: -3.3869, lon: 36.6827 },
+  'Dar es Salaam': { lat: -6.8235, lon: 39.2695 },
+  'Dodoma': { lat: -6.1731, lon: 35.7395 },
+  'Geita': { lat: -2.8667, lon: 32.1667 },
+  'Iringa': { lat: -7.7701, lon: 35.693 },
+  'Kagera': { lat: -1.3319, lon: 31.8196 },
+  'Katavi': { lat: -6.3433, lon: 31.0667 },
+  'Kigoma': { lat: -4.8769, lon: 29.6267 },
+  'Kilimanjaro': { lat: -3.35, lon: 37.3333 },
+  'Lindi': { lat: -9.9966, lon: 39.7166 },
+  'Manyara': { lat: -4.2167, lon: 35.75 },
+  'Mara': { lat: -1.5, lon: 33.8 },
+  'Mbeya': { lat: -8.9, lon: 33.45 },
+  'Morogoro': { lat: -6.8242, lon: 37.6615 },
+  'Mtwara': { lat: -10.264, lon: 40.1833 },
+  'Mwanza': { lat: -2.5167, lon: 32.9 },
+  'Njombe': { lat: -9.3333, lon: 34.7667 },
+  'Pwani': { lat: -6.44, lon: 38.91 },
+  'Rukwa': { lat: -7.9667, lon: 31.6167 },
+  'Ruvuma': { lat: -10.6833, lon: 35.65 },
+  'Shinyanga': { lat: -3.6635, lon: 33.427 },
+  'Simiyu': { lat: -2.8167, lon: 34.0667 },
+  'Singida': { lat: -4.8158, lon: 34.7469 },
+  'Songwe': { lat: -9.0, lon: 33.1 },
+  'Tabora': { lat: -5.0167, lon: 32.8 },
+  'Tanga': { lat: -5.0694, lon: 39.0994 },
+};
+
+const WMO_CODES: Record<number, string> = {
+  0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
+  45: 'Fog', 51: 'Light drizzle', 53: 'Moderate drizzle', 61: 'Slight rain',
+  63: 'Moderate rain', 65: 'Heavy rain', 80: 'Showers', 81: 'Moderate showers',
+  82: 'Violent showers', 95: 'Thunderstorm', 99: 'Severe thunderstorm',
+};
+
+/**
+ * Resolves (lat, lon, label) for a given district/region.
+ */
+function resolveCoords(district?: string, region?: string): { lat: number; lon: number; label: string } {
+  if (region && district && TANZANIA_DISTRICT_COORDS[region]?.[district]) {
+    const c = TANZANIA_DISTRICT_COORDS[region][district];
+    return { lat: c.lat, lon: c.lon, label: `${district} District, ${region} Region, Tanzania` };
+  }
+  if (region && REGION_FALLBACK[region]) {
+    const c = REGION_FALLBACK[region];
+    return { lat: c.lat, lon: c.lon, label: `${region} Region, Tanzania` };
+  }
+  return { lat: -6.1731, lon: 35.7395, label: 'Tanzania' };
+}
+
+/**
+ * Fetches a 7-day weather snapshot from Open-Meteo for the given location.
+ * Returns a compact text block ready to paste into a system prompt.
+ */
+export async function fetchWeatherContext(district?: string, region?: string): Promise<string> {
+  const { lat, lon, label } = resolveCoords(district, region);
+  try {
+    const url =
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code` +
+      `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,weather_code` +
+      `&timezone=Africa%2FDar_es_Salaam&forecast_days=7`;
+
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = (await res.json()) as any;
+
+    const cur = data.current || {};
+    const d = data.daily || {};
+    const dates: string[] = d.time || [];
+
+    const forecastLines = dates.map((date: string, i: number) => {
+      const hi = d.temperature_2m_max?.[i] ?? '?';
+      const lo = d.temperature_2m_min?.[i] ?? '?';
+      const rain = d.precipitation_sum?.[i] ?? 0;
+      const prob = d.precipitation_probability_max?.[i] ?? 0;
+      const wind = d.wind_speed_10m_max?.[i] ?? '?';
+      const cond = WMO_CODES[d.weather_code?.[i] ?? 0] ?? 'Unknown';
+      return `  ${date}: ${lo}-${hi}°C, ${rain}mm rain, ${prob}% chance, wind ${wind}km/h — ${cond}`;
+    }).join('\n');
+
+    const currentCondition = WMO_CODES[cur.weather_code ?? 0] ?? 'Unknown';
+
+    return `\n=== LIVE WEATHER FOR ${label.toUpperCase()} ===
+Current: ${cur.temperature_2m}°C, Humidity: ${cur.relative_humidity_2m}%, Wind: ${cur.wind_speed_10m}km/h — ${currentCondition}
+7-Day Forecast:
+${forecastLines}
+Fertigation tip: schedule on dry days with rain chance <30% and wind <25km/h, early morning 5:30-7:00 AM.
+=== END WEATHER ===\n`;
+  } catch (err: any) {
+    return `\n[Weather unavailable for ${label}: ${err.message}]\n`;
+  }
+}
 
 /**
  * Builds a snapshot of the current farm state to inject into AI prompts.
@@ -62,45 +159,8 @@ ${logDetails || 'No logs'}
 }
 
 /**
- * Creates a short-lived ephemeral token (valid ~60 s, single use) for the
- * Gemini Live API. The client uses this token in place of the raw API key,
- * so the key is never exposed to the browser.
- */
-export async function createEphemeralToken(): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('Gemini API key not configured');
-
-  const expireTime = new Date(Date.now() + 60_000).toISOString();
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/ephemeralTokens?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        config: {
-          uses: 1,
-          expire_time: expireTime,
-          new_session_config: {
-            model: 'models/gemini-2.0-flash-live-001',
-          },
-        },
-      }),
-    }
-  );
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Ephemeral token request failed (${res.status}): ${body}`);
-  }
-
-  const data = (await res.json()) as any;
-  if (!data.token) throw new Error('No token in ephemeral token response');
-  return data.token;
-}
-
-/**
  * Sends a chat request directly to Gemini (no ADK). Used as the ADK fallback.
+ * Includes live weather data for the user's farm location.
  */
 export async function chatViaGeminiDirect(
   message: string,
@@ -113,16 +173,31 @@ export async function chatViaGeminiDirect(
   if (!apiKey) throw new Error('Gemini API key not configured');
 
   const ai = new GoogleGenAI({ apiKey });
-  const farmContext = await getFarmContext(userId);
+
+  // Fetch farm data and weather in parallel
+  const profile = userId
+    ? await dbGet('SELECT region, district, farm_size_acres FROM users WHERE id = ?', userId)
+    : null;
+
+  const [farmContext, weatherContext] = await Promise.all([
+    getFarmContext(userId),
+    fetchWeatherContext(profile?.district ?? undefined, profile?.region ?? undefined),
+  ]);
+
+  const locationLine = profile?.district || profile?.region
+    ? `Farm Location: ${[profile.district && `${profile.district} District`, profile.region && `${profile.region} Region`].filter(Boolean).join(', ')}, Tanzania`
+    : 'Farm Location: Tanzania';
 
   const systemInstruction = `You are 'BwanaShamba' (AI Farm Assistant) for a farm in Tanzania growing horticulture crops (tomatoes, onions, peppers, cabbage, spinach, cucumbers, watermelon, eggplant, carrots, lettuce, okra, green beans) and maize.
 You help farmers with questions about all these crops — soil, pest control, irrigation, fertigation, harvest timing, and market prices.
 You are fluent in both English and Kiswahili. IMPORTANT: Always respond in the same language the user is currently using. If the user writes in Kiswahili, respond entirely in Kiswahili. If the user writes in English, respond in English. If the user switches languages mid-conversation, switch with them immediately.
-Be concise, practical, and helpful. Use the live farm data below to give specific, accurate answers about zones, tasks, and conditions.
+Be concise, practical, and helpful. Use the live farm data and weather below to give specific, accurate answers.
 
+${locationLine}
+${weatherContext}
 ${farmContext}
 
-Current Date: ${new Date().toISOString()}`;
+Current Date/Time: ${new Date().toLocaleString('en-US', { timeZone: 'Africa/Dar_es_Salaam' })} EAT`;
 
   if (image) {
     const lastContent = contents[contents.length - 1];
