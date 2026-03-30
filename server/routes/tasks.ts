@@ -9,12 +9,14 @@ const VALID_STATUSES = ['Pending', 'In Progress', 'Completed', 'Cancelled'];
 // ─── GET /api/tasks ────────────────────────────────────────────────────────────
 router.get('/', isAuthenticated, async (req, res) => {
   try {
+    const userId = req.session.userId!;
     const tasks = await dbAll(`
       SELECT tasks.*, zones.name AS zone_name, zones.crop_type
       FROM tasks
       JOIN zones ON tasks.zone_id = zones.id
+      WHERE zones.user_id = ?
       ORDER BY scheduled_time ASC
-    `);
+    `, userId);
     res.json(tasks);
   } catch (err: any) {
     console.error('[tasks] GET error:', err.message);
@@ -25,6 +27,7 @@ router.get('/', isAuthenticated, async (req, res) => {
 // ─── POST /api/tasks ───────────────────────────────────────────────────────────
 router.post('/', isAuthenticated, async (req, res) => {
   try {
+    const userId = req.session.userId!;
     const { zone_id, task_type, scheduled_time, duration_minutes, reasoning } = req.body;
 
     if (!zone_id || isNaN(Number(zone_id))) {
@@ -38,9 +41,12 @@ router.post('/', isAuthenticated, async (req, res) => {
     }
     const parsedDuration = duration_minutes != null ? parseInt(duration_minutes, 10) : null;
 
-    const zone = await dbGet('SELECT id FROM zones WHERE id = ?', Number(zone_id));
+    const zone = await dbGet(
+      'SELECT id FROM zones WHERE id = ? AND user_id = ?',
+      Number(zone_id), userId
+    );
     if (!zone) {
-      return res.status(404).json({ message: 'Zone not found' });
+      return res.status(404).json({ message: 'Zone not found or access denied' });
     }
 
     const info = await dbRun(
@@ -63,6 +69,7 @@ router.post('/', isAuthenticated, async (req, res) => {
 router.patch('/:id/status', isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.session.userId!;
     const { status } = req.body;
 
     if (!status || !VALID_STATUSES.includes(status)) {
@@ -71,9 +78,14 @@ router.patch('/:id/status', isAuthenticated, async (req, res) => {
       });
     }
 
-    const task = await dbGet('SELECT id FROM tasks WHERE id = ?', Number(id));
+    const task = await dbGet(`
+      SELECT tasks.id FROM tasks
+      JOIN zones ON tasks.zone_id = zones.id
+      WHERE tasks.id = ? AND zones.user_id = ?
+    `, Number(id), userId);
+
     if (!task) {
-      return res.status(404).json({ message: 'Task not found' });
+      return res.status(404).json({ message: 'Task not found or access denied' });
     }
 
     await dbRun('UPDATE tasks SET status = ? WHERE id = ?', status, Number(id));

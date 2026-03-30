@@ -7,14 +7,24 @@ import { getDaysToHarvest, getGrowthStage } from '../constants/crops.ts';
  */
 export async function getFarmContext(userId?: number): Promise<string> {
   const zones = userId
-    ? await dbAll('SELECT * FROM zones WHERE user_id = ? OR user_id IS NULL', userId)
+    ? await dbAll('SELECT * FROM zones WHERE user_id = ?', userId)
     : await dbAll('SELECT * FROM zones');
-  const tasks = await dbAll(
-    'SELECT t.*, z.name as zone_name FROM tasks t JOIN zones z ON t.zone_id = z.id ORDER BY t.scheduled_time DESC LIMIT 20'
-  );
-  const logs = await dbAll(
-    'SELECT l.*, z.name as zone_name FROM logs l LEFT JOIN zones z ON l.zone_id = z.id ORDER BY l.timestamp DESC LIMIT 10'
-  );
+  const tasks = userId
+    ? await dbAll(
+        'SELECT t.*, z.name as zone_name FROM tasks t JOIN zones z ON t.zone_id = z.id WHERE z.user_id = ? ORDER BY t.scheduled_time DESC LIMIT 20',
+        userId
+      )
+    : await dbAll(
+        'SELECT t.*, z.name as zone_name FROM tasks t JOIN zones z ON t.zone_id = z.id ORDER BY t.scheduled_time DESC LIMIT 20'
+      );
+  const logs = userId
+    ? await dbAll(
+        'SELECT l.*, z.name as zone_name FROM logs l LEFT JOIN zones z ON l.zone_id = z.id WHERE z.user_id = ? ORDER BY l.timestamp DESC LIMIT 10',
+        userId
+      )
+    : await dbAll(
+        'SELECT l.*, z.name as zone_name FROM logs l LEFT JOIN zones z ON l.zone_id = z.id ORDER BY l.timestamp DESC LIMIT 10'
+      );
 
   const today = new Date();
 

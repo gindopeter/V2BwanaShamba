@@ -26,7 +26,7 @@ router.get('/', isAuthenticated, async (req, res) => {
          WHERE task_type = 'Fertigation' AND status = 'Pending'
          GROUP BY zone_id
        ) t ON t.zone_id = z.id
-       WHERE z.user_id = ? OR z.user_id IS NULL`,
+       WHERE z.user_id = ?`,
       userId
     );
 
@@ -107,7 +107,7 @@ router.put('/:id', isAuthenticated, async (req, res) => {
     const { name, crop_type, planting_date, area_size, status } = req.body;
 
     const zone = await dbGet(
-      'SELECT * FROM zones WHERE id = ? AND (user_id = ? OR user_id IS NULL)',
+      'SELECT * FROM zones WHERE id = ? AND user_id = ?',
       Number(id),
       userId
     ) as any;
@@ -155,7 +155,7 @@ router.delete('/:id', isAuthenticated, async (req, res) => {
     const userId = req.session.userId!;
 
     const zone = await dbGet(
-      'SELECT id FROM zones WHERE id = ? AND (user_id = ? OR user_id IS NULL)',
+      'SELECT id FROM zones WHERE id = ? AND user_id = ?',
       Number(id),
       userId
     );
@@ -189,7 +189,7 @@ router.patch('/:id/yield', isAuthenticated, async (req, res) => {
     }
 
     const zone = await dbGet(
-      'SELECT id FROM zones WHERE id = ? AND (user_id = ? OR user_id IS NULL)',
+      'SELECT id FROM zones WHERE id = ? AND user_id = ?',
       Number(id),
       userId
     );
@@ -224,7 +224,7 @@ router.post('/:id/irrigation', isAuthenticated, async (req, res) => {
     }
 
     const zone = await dbGet(
-      'SELECT id FROM zones WHERE id = ? AND (user_id = ? OR user_id IS NULL)',
+      'SELECT id FROM zones WHERE id = ? AND user_id = ?',
       Number(id),
       userId
     );
