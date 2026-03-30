@@ -194,6 +194,34 @@ router.post('/', isAuthenticated, async (req, res) => {
       adkSessionId = existing.text.replace('adk_session:', '');
     }
 
+    // ── Build farm location context to inject into every ADK message ──────────
+    const userProfile = await dbGet(
+      'SELECT region, district, farm_size_acres FROM users WHERE id = ?',
+      userId
+    );
+    let farmContextPrefix = '';
+    if (userProfile) {
+      const parts: string[] = [];
+      if (userProfile.district) parts.push(`${userProfile.district} District`);
+      if (userProfile.region) parts.push(`${userProfile.region} Region`);
+      parts.push('Tanzania');
+      const locationStr = parts.join(', ');
+      const now = new Date().toLocaleString('en-US', {
+        timeZone: 'Africa/Dar_es_Salaam',
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+      const farmSize = userProfile.farm_size_acres ? `${userProfile.farm_size_acres} acres` : 'not specified';
+      farmContextPrefix =
+        `[FARM CONTEXT - read before responding]\n` +
+        `Location: ${locationStr}\n` +
+        `Farm Size: ${farmSize}\n` +
+        `Current Date/Time: ${now} EAT\n` +
+        (userProfile.district ? `Weather: call get_weather_forecast with district="${userProfile.district}" region="${userProfile.region || ''}" for accurate local conditions\n` : '') +
+        `[END FARM CONTEXT]\n\n`;
+    }
+    const enrichedMessage = farmContextPrefix + (message || 'Analyze this image.');
+
     // ── Streaming path ──────────────────────────────────────────────────────────
     if (wantStream) {
       res.setHeader('Content-Type', 'text/event-stream');
@@ -216,7 +244,7 @@ router.post('/', isAuthenticated, async (req, res) => {
 
       try {
         const { promise, abort } = createADKStreamFetch(
-          message || 'Analyze this image.',
+          enrichedMessage,
           String(userId),
           adkSessionId,
           image,
@@ -293,7 +321,7 @@ router.post('/', isAuthenticated, async (req, res) => {
           parts: [{ text: msg.text }],
         }));
 
-        fullReply = await chatViaGeminiDirect(message, contents, image, clientMimeType, userId);
+        fullReply = await chatViaGeminiDirect(enrichedMessage, contents, image, clientMimeType, userId);
         res.write(`data: ${JSON.stringify({ type: 'text', content: fullReply })}\n\n`);
       }
 
@@ -333,7 +361,7 @@ router.post('/', isAuthenticated, async (req, res) => {
 
     try {
       const adkResult = await chatViaADK(
-        message || 'Analyze this image.',
+        enrichedMessage,
         String(userId),
         adkSessionId,
         image,
@@ -363,7 +391,7 @@ router.post('/', isAuthenticated, async (req, res) => {
         parts: [{ text: msg.text }],
       }));
 
-      reply = await chatViaGeminiDirect(message, contents, image, clientMimeType, userId);
+      reply = await chatViaGeminiDirect(enrichedMessage, contents, image, clientMimeType, userId);
     }
 
     await dbRun(

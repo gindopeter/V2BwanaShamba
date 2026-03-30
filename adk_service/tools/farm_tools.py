@@ -536,21 +536,99 @@ def get_harvest_recommendation(crop_type: str) -> dict:
 TANZANIA_CENTER_LAT = -6.1731
 TANZANIA_CENTER_LON = 35.7395
 
-_weather_cache = {"data": None, "fetched_at": None}
+# District-level coordinates for Tanzania (lat/lon of district centres)
+DISTRICT_COORDS = {
+    "Arusha": {"Arusha City": (-3.3869, 36.6827), "Arumeru": (-3.35, 36.9), "Karatu": (-3.35, 35.65), "Longido": (-2.75, 36.6833), "Monduli": (-3.3, 36.45), "Ngorongoro": (-3.2, 35.5)},
+    "Dar es Salaam": {"Ilala": (-6.8235, 39.2695), "Kinondoni": (-6.77, 39.23), "Temeke": (-6.88, 39.26), "Ubungo": (-6.78, 39.21), "Kigamboni": (-6.9, 39.33)},
+    "Dodoma": {"Dodoma City": (-6.1731, 35.7395), "Bahi": (-5.9667, 35.2), "Chamwino": (-6.25, 35.6), "Chemba": (-5.55, 35.75), "Kondoa": (-4.9, 35.7833), "Kongwa": (-6.2, 36.4167), "Mpwapwa": (-6.35, 36.4833)},
+    "Geita": {"Geita": (-2.8667, 32.1667), "Bukombe": (-3.4, 32.25), "Chato": (-2.6167, 31.9833), "Mbogwe": (-3.2, 32.05), "Nyang'hwale": (-3.0, 32.5)},
+    "Iringa": {"Iringa Urban": (-7.7701, 35.693), "Iringa Rural": (-7.85, 35.6), "Kilolo": (-7.7, 36.3), "Mufindi": (-8.5833, 35.3333)},
+    "Kagera": {"Bukoba Urban": (-1.3319, 31.8196), "Bukoba Rural": (-1.4, 31.75), "Biharamulo": (-2.6333, 31.3), "Karagwe": (-1.5, 31.15), "Kyerwa": (-1.65, 30.9), "Misenyi": (-1.1, 31.7833), "Muleba": (-1.8333, 31.6667), "Ngara": (-2.5, 30.65)},
+    "Katavi": {"Mpanda": (-6.3433, 31.0667), "Mlele": (-6.5, 31.5), "Nsimbo": (-6.8, 31.7)},
+    "Kigoma": {"Kigoma Urban": (-4.8769, 29.6267), "Kigoma Rural": (-4.9, 29.7), "Buhigwe": (-4.2, 29.9), "Kakonko": (-3.2833, 30.95), "Kasulu": (-4.5667, 30.1), "Kibondo": (-3.9833, 30.7), "Uvinza": (-5.1, 30.3833)},
+    "Kilimanjaro": {"Moshi Urban": (-3.35, 37.3333), "Moshi Rural": (-3.4, 37.25), "Hai": (-3.4667, 37.0667), "Mwanga": (-4.15, 37.3667), "Rombo": (-3.2333, 37.6), "Same": (-4.0667, 37.7333), "Siha": (-3.5667, 37.0)},
+    "Lindi": {"Lindi Urban": (-9.9966, 39.7166), "Lindi Rural": (-10.05, 39.65), "Kilwa": (-8.9167, 39.5167), "Liwale": (-9.7667, 37.9333), "Nachingwea": (-10.35, 38.7667), "Ruangwa": (-10.4833, 38.9667)},
+    "Manyara": {"Babati Urban": (-4.2167, 35.75), "Babati Rural": (-4.3, 35.7), "Hanang": (-4.45, 35.4), "Kiteto": (-5.8833, 36.7), "Mbulu": (-3.85, 35.5333), "Simanjiro": (-4.2, 36.85)},
+    "Mara": {"Musoma Urban": (-1.5, 33.8), "Musoma Rural": (-1.55, 33.7), "Bunda": (-1.8667, 33.8667), "Butiama": (-1.7, 33.9667), "Rorya": (-1.4333, 34.15), "Serengeti": (-2.3333, 34.8333), "Tarime": (-1.35, 34.1667)},
+    "Mbeya": {"Mbeya City": (-8.9, 33.45), "Mbeya Rural": (-8.95, 33.4), "Busokelo": (-9.0, 33.75), "Chunya": (-8.55, 33.4167), "Kyela": (-9.5833, 33.9167), "Mbarali": (-8.4, 34.25), "Momba": (-9.5, 32.75), "Rungwe": (-9.1833, 33.6)},
+    "Morogoro": {"Morogoro Urban": (-6.8242, 37.6615), "Morogoro Rural": (-7.0, 37.5), "Gairo": (-6.1667, 36.7333), "Kilombero": (-8.4, 36.5333), "Kilosa": (-6.8333, 36.9833), "Mvomero": (-6.25, 37.65), "Ulanga": (-8.6667, 36.65)},
+    "Mtwara": {"Mtwara Urban": (-10.264, 40.1833), "Mtwara Rural": (-10.3, 40.1), "Masasi": (-10.7333, 38.8), "Nanyumbu": (-11.0833, 39.05), "Newala": (-10.9833, 39.65), "Tandahimba": (-10.85, 39.6833)},
+    "Mwanza": {"Ilemela": (-2.4833, 32.9167), "Nyamagana": (-2.5167, 32.9), "Kwimba": (-3.0833, 33.1), "Magu": (-2.8167, 33.4667), "Misungwi": (-2.85, 33.05), "Sengerema": (-2.6333, 32.5833), "Ukerewe": (-2.0833, 32.9167)},
+    "Njombe": {"Njombe Urban": (-9.3333, 34.7667), "Njombe Rural": (-9.4, 34.7), "Ludewa": (-10.0, 34.6667), "Makete": (-9.0, 34.3333), "Wanging'ombe": (-9.1, 35.1667)},
+    "Pwani": {"Bagamoyo": (-6.44, 38.91), "Kibaha Urban": (-6.7833, 38.9167), "Kibaha Rural": (-6.8, 38.85), "Kisarawe": (-6.9833, 39.0167), "Mafia": (-7.9167, 39.8333), "Mkuranga": (-7.1167, 39.2333), "Rufiji": (-7.8333, 39.2)},
+    "Rukwa": {"Sumbawanga Urban": (-7.9667, 31.6167), "Sumbawanga Rural": (-8.05, 31.6), "Kalambo": (-8.5833, 31.2833), "Nkasi": (-7.25, 31.5)},
+    "Ruvuma": {"Songea Urban": (-10.6833, 35.65), "Songea Rural": (-10.75, 35.55), "Mbinga": (-10.9167, 35.0), "Namtumbo": (-10.4167, 36.0333), "Nyasa": (-11.25, 34.75), "Tunduru": (-11.1, 37.35)},
+    "Shinyanga": {"Shinyanga Urban": (-3.6635, 33.427), "Shinyanga Rural": (-3.7, 33.4), "Kahama": (-3.8333, 32.6), "Kishapu": (-3.5, 33.6833), "Msalala": (-3.3, 32.5167), "Ushetu": (-3.8833, 32.7667)},
+    "Simiyu": {"Bariadi": (-2.8167, 34.0667), "Busega": (-2.5, 33.95), "Itilima": (-2.65, 34.35), "Maswa": (-2.9, 33.8), "Meatu": (-3.6667, 34.0333)},
+    "Singida": {"Singida Urban": (-4.8158, 34.7469), "Singida Rural": (-4.9, 34.7), "Ikungi": (-5.5, 34.7), "Iramba": (-4.3333, 34.9167), "Manyoni": (-5.75, 34.85), "Mkalama": (-4.1667, 34.8833)},
+    "Songwe": {"Ileje": (-9.3667, 33.2167), "Mbozi": (-9.0167, 32.9333), "Momba": (-9.5, 32.75), "Songwe": (-9.0, 33.1)},
+    "Tabora": {"Tabora Urban": (-5.0167, 32.8), "Igunga": (-4.2833, 33.0167), "Kaliua": (-5.1667, 31.8333), "Nzega": (-4.2167, 33.1833), "Sikonge": (-5.6333, 32.7667), "Urambo": (-5.0667, 32.05), "Uyui": (-5.15, 32.7)},
+    "Tanga": {"Tanga City": (-5.0694, 39.0994), "Handeni": (-5.4333, 38.0167), "Kilindi": (-5.2667, 38.4167), "Korogwe": (-5.15, 38.4833), "Lushoto": (-4.7833, 38.2833), "Mkinga": (-4.7333, 39.1833), "Muheza": (-5.1667, 38.7833), "Pangani": (-5.4333, 38.9667)},
+    "Zanzibar North": {"Kaskazini A": (-5.7167, 39.2833), "Kaskazini B": (-5.75, 39.3)},
+    "Zanzibar South": {"Kusini": (-6.25, 39.3667), "Kati": (-6.1, 39.3333)},
+    "Zanzibar West": {"Mjini": (-6.1659, 39.2026), "Magharibi A": (-6.1333, 39.15), "Magharibi B": (-6.2, 39.1333)},
+}
+
+# Region-level fallback coordinates
+REGION_COORDS = {
+    "Arusha": (-3.3869, 36.6827), "Dar es Salaam": (-6.8235, 39.2695), "Dodoma": (-6.1731, 35.7395),
+    "Geita": (-2.8667, 32.1667), "Iringa": (-7.7701, 35.693), "Kagera": (-1.3319, 31.8196),
+    "Katavi": (-6.3433, 31.0667), "Kigoma": (-4.8769, 29.6267), "Kilimanjaro": (-3.35, 37.3333),
+    "Lindi": (-9.9966, 39.7166), "Manyara": (-4.2167, 35.75), "Mara": (-1.5, 33.8),
+    "Mbeya": (-8.9, 33.45), "Morogoro": (-6.8242, 37.6615), "Mtwara": (-10.264, 40.1833),
+    "Mwanza": (-2.5167, 32.9), "Njombe": (-9.3333, 34.7667), "Pwani": (-6.44, 38.91),
+    "Rukwa": (-7.9667, 31.6167), "Ruvuma": (-10.6833, 35.65), "Shinyanga": (-3.6635, 33.427),
+    "Simiyu": (-2.8167, 34.0667), "Singida": (-4.8158, 34.7469), "Songwe": (-9.0, 33.1),
+    "Tabora": (-5.0167, 32.8), "Tanga": (-5.0694, 39.0994),
+}
 
 
-def get_weather_forecast() -> dict:
-    """Get the current weather and 7-day forecast for the farmer's region in Tanzania.
-    Returns daily temperature (min/max), precipitation, humidity, wind speed, and rain probability.
-    Use this to advise on fertigation timing, irrigation scheduling, and weather-sensitive farm operations."""
+def _resolve_coords(district: str = None, region: str = None):
+    """Return (lat, lon, location_label) for the given district/region."""
+    if district and region and region in DISTRICT_COORDS:
+        districts = DISTRICT_COORDS[region]
+        if district in districts:
+            lat, lon = districts[district]
+            return lat, lon, f"{district} District, {region} Region"
+        # Fuzzy match: district name contains or is contained in key
+        for key, coords in districts.items():
+            if district.lower() in key.lower() or key.lower() in district.lower():
+                return coords[0], coords[1], f"{key}, {region} Region"
+    if region and region in REGION_COORDS:
+        lat, lon = REGION_COORDS[region]
+        return lat, lon, f"{region} Region"
+    if region:
+        # Try fuzzy region match
+        for key, coords in REGION_COORDS.items():
+            if region.lower() in key.lower() or key.lower() in region.lower():
+                return coords[0], coords[1], f"{key} Region"
+    return TANZANIA_CENTER_LAT, TANZANIA_CENTER_LON, "Tanzania"
+
+
+_weather_cache: dict = {}  # key: (district, region) → {"data": ..., "fetched_at": ...}
+
+
+def get_weather_forecast(district: str = None, region: str = None) -> dict:
+    """Get the current weather and 7-day forecast for the farmer's specific location in Tanzania.
+    Always pass the farmer's district and region from the Farm Context so the forecast is accurate for their area.
+
+    Args:
+        district: The farmer's district (e.g. "Karatu", "Moshi Urban", "Morogoro Urban"). From Farm Context.
+        region: The farmer's region (e.g. "Arusha", "Kilimanjaro", "Morogoro"). From Farm Context.
+
+    Returns daily temperature (min/max), precipitation, humidity, wind speed, rain probability, and fertigation advice."""
+    cache_key = (district or "", region or "")
     now = datetime.now()
-    if _weather_cache["data"] and _weather_cache["fetched_at"] and (now - _weather_cache["fetched_at"]).total_seconds() < 1800:
-        return _weather_cache["data"]
+    cached = _weather_cache.get(cache_key)
+    if cached and cached.get("fetched_at") and (now - cached["fetched_at"]).total_seconds() < 1800:
+        return cached["data"]
+
+    lat, lon, location_label = _resolve_coords(district, region)
 
     try:
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
-            f"latitude={TANZANIA_CENTER_LAT}&longitude={TANZANIA_CENTER_LON}"
+            f"latitude={lat}&longitude={lon}"
             f"&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code"
             f"&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,weather_code"
             f"&timezone=Africa%2FDar_es_Salaam"
@@ -574,7 +652,7 @@ def get_weather_forecast() -> dict:
         daily = data.get("daily", {})
 
         result = {
-            "location": "Tanzania",
+            "location": location_label,
             "current": {
                 "temp": current.get("temperature_2m"),
                 "humidity": current.get("relative_humidity_2m"),
@@ -645,15 +723,14 @@ def get_weather_forecast() -> dict:
             ]
         }
 
-        _weather_cache["data"] = result
-        _weather_cache["fetched_at"] = now
+        _weather_cache[cache_key] = {"data": result, "fetched_at": now}
         return result
 
     except Exception as e:
         return {
             "error": f"Could not fetch weather data: {str(e)}",
             "fallback": {
-                "location": "Tanzania",
+                "location": location_label,
                 "climate": "Tropical climate varies by region. Dry season typically June-October in most areas.",
                 "fertigation_general": "Apply fertigation early morning on dry days with low wind. Avoid before expected rain."
             }
