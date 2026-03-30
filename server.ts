@@ -113,13 +113,13 @@ async function startServer() {
   app.post('/api/engine/run-checks', isAuthenticated, async (req, res) => {
     const userId = req.session.userId!;
     const zones = await dbAll(
-      "SELECT * FROM zones WHERE status = 'Active' AND (user_id = ? OR user_id IS NULL)",
+      "SELECT * FROM zones WHERE status = 'Active' AND user_id = ?",
       userId
     );
 
     const userProfile = await dbGet('SELECT region FROM users WHERE id = ?', userId);
-    const userRegion = userProfile?.region || 'Pwani';
-    const coords = TANZANIA_REGIONS[userRegion] || { lat: -7.1, lon: 38.7 };
+    const userRegion = userProfile?.region || 'Tanzania';
+    const coords = TANZANIA_REGIONS[userRegion] || TANZANIA_REGIONS['Dodoma'];
 
     let weather: any;
 

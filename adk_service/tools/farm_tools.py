@@ -15,7 +15,7 @@ def _get_db():
 
 def get_all_zones() -> dict:
     """Get all farm zones with their current status, crop type, irrigation status, and yield data.
-    Returns a dictionary with zone information for the 5-acre mixed horticulture and maize farm."""
+    Returns a dictionary with zone information for the user's farm zones."""
     try:
         conn = _get_db()
         rows = conn.execute("SELECT * FROM zones").fetchall()
@@ -178,10 +178,11 @@ def get_farm_summary() -> dict:
             "SELECT l.*, z.name as zone_name FROM logs l LEFT JOIN zones z ON l.zone_id = z.id WHERE l.severity IN ('warning', 'error') ORDER BY l.timestamp DESC LIMIT 5"
         ).fetchall()]
         conn.close()
+        total_area = sum(z.get("area_size", 0) for z in zones)
         return {
-            "farm_name": "Malivundo Farm",
-            "location": "Malivundo, Pwani, Tanzania",
-            "total_area": "5 acres",
+            "farm_name": "My Farm",
+            "location": "Tanzania",
+            "total_area": f"{total_area} acres",
             "zones": zones,
             "pending_tasks": pending,
             "recent_alerts": alerts,
@@ -393,7 +394,7 @@ def get_market_prices() -> dict:
 
 
 def get_harvest_recommendation(crop_type: str) -> dict:
-    """Get harvest timing recommendations for a specific crop based on Malivundo conditions.
+    """Get harvest timing recommendations for a specific crop grown in Tanzania.
 
     Args:
         crop_type: The crop type (e.g. 'tomato', 'onion', 'maize', 'pepper', 'cabbage', etc.).
@@ -414,7 +415,7 @@ def get_harvest_recommendation(crop_type: str) -> dict:
                 "Store in shade, ventilated area",
                 "Transport to market within 2-3 days of harvest"
             ],
-            "malivundo_tips": "In Pwani's warm climate, tomatoes ripen faster. Start checking at 55 days."
+            "local_tips": "In Tanzania's warm climate, tomatoes ripen faster. Start checking at 55 days."
         },
         "onion": {
             "crop": "Onion",
@@ -431,7 +432,7 @@ def get_harvest_recommendation(crop_type: str) -> dict:
                 "Store in dry, ventilated area",
                 "Can store 2-4 months if properly cured"
             ],
-            "malivundo_tips": "Pwani humidity can cause rot during curing. Ensure good airflow and avoid curing during rain."
+            "local_tips": "High humidity can cause rot during curing. Ensure good airflow and avoid curing during rain."
         },
         "pepper": {
             "crop": "Pepper",
@@ -442,70 +443,70 @@ def get_harvest_recommendation(crop_type: str) -> dict:
                 "Easily snaps off the plant"
             ],
             "post_harvest": ["Handle carefully to avoid bruising", "Store at 7-10°C", "Sort by size and color"],
-            "malivundo_tips": "In Pwani heat, peppers color faster. Harvest in morning for best quality."
+            "local_tips": "In Tanzania's heat, peppers color faster. Harvest in morning for best quality."
         },
         "cabbage": {
             "crop": "Cabbage",
             "days_to_maturity": "70-90 days after transplanting",
             "harvest_signs": ["Head feels firm and solid when squeezed", "Head reaches expected size for variety", "Outer leaves may start yellowing"],
             "post_harvest": ["Remove loose outer leaves", "Store in cool shade", "Can keep 2-3 weeks in proper conditions"],
-            "malivundo_tips": "In Pwani, harvest early morning to avoid heat wilting. Don't delay harvest as heads may split."
+            "local_tips": "Harvest early morning to avoid heat wilting. Don't delay harvest as heads may split."
         },
         "spinach": {
             "crop": "Spinach",
             "days_to_maturity": "35-45 days from planting",
             "harvest_signs": ["Leaves reach 15-20cm length", "Dark green color, tender leaves", "Before bolting (flowering)"],
             "post_harvest": ["Harvest early morning", "Keep moist and cool", "Sell same day for best price"],
-            "malivundo_tips": "Fast crop in Pwani climate. Can get 3-4 harvests by cutting outer leaves."
+            "local_tips": "Fast-growing crop in Tanzania's climate. Can get 3-4 harvests by cutting outer leaves."
         },
         "cucumber": {
             "crop": "Cucumber",
             "days_to_maturity": "50-60 days from planting",
             "harvest_signs": ["Fruit 15-20cm long, dark green", "Firm and crisp", "Don't let them turn yellow — overripe"],
             "post_harvest": ["Keep cool and moist", "Sell within 2-3 days", "Sort by size"],
-            "malivundo_tips": "In Pwani heat, check daily — cucumbers grow fast and can become oversized quickly."
+            "local_tips": "In Tanzania's heat, check daily — cucumbers grow fast and can become oversized quickly."
         },
         "watermelon": {
             "crop": "Watermelon",
             "days_to_maturity": "70-85 days from planting",
             "harvest_signs": ["Ground spot turns cream/yellow", "Tendril near fruit dries up", "Hollow sound when tapped", "Skin resists scratching"],
             "post_harvest": ["Handle gently — bruising reduces shelf life", "Store in shade", "Can keep 2-3 weeks uncut"],
-            "malivundo_tips": "Reduce irrigation 7-10 days before harvest for sweeter fruit."
+            "local_tips": "Reduce irrigation 7-10 days before harvest for sweeter fruit."
         },
         "eggplant": {
             "crop": "Eggplant",
             "days_to_maturity": "60-80 days after transplanting",
             "harvest_signs": ["Glossy skin (dull = overripe)", "Firm flesh that springs back", "Seeds still white (not brown)"],
             "post_harvest": ["Handle carefully", "Store at 10-12°C", "Best sold within a week"],
-            "malivundo_tips": "Similar to tomatoes. Harvest regularly to encourage more fruiting."
+            "local_tips": "Harvest regularly to encourage more fruiting. Sell when skin is glossy and deep purple."
         },
         "carrot": {
             "crop": "Carrot",
             "days_to_maturity": "70-80 days from direct seeding",
             "harvest_signs": ["Top of root visible at soil surface (2-3cm diameter)", "Bright orange color", "Shoulders about 2cm across"],
             "post_harvest": ["Remove tops immediately", "Wash gently", "Store in cool moist conditions"],
-            "malivundo_tips": "Sandy soils in parts of Pwani are ideal. Harvest before soil gets too wet."
+            "local_tips": "Sandy loam soils produce the straightest roots. Harvest before soil becomes waterlogged."
         },
         "lettuce": {
             "crop": "Lettuce",
             "days_to_maturity": "45-60 days from transplanting",
             "harvest_signs": ["Heads feel firm", "Full size for variety", "Before bolting in heat"],
             "post_harvest": ["Harvest early morning", "Keep moist and cool immediately", "Best sold same day"],
-            "malivundo_tips": "Lettuce bolts fast in Pwani heat. Grow in partial shade if possible. Target hotels and restaurants."
+            "local_tips": "In hot regions, grow in partial shade to prevent bolting. Target hotels and restaurants for premium prices."
         },
         "okra": {
             "crop": "Okra",
             "days_to_maturity": "45-55 days from planting",
             "harvest_signs": ["Pods 7-10cm long", "Tender and snaps easily", "Harvest every 2 days in peak season"],
             "post_harvest": ["Handle gently", "Sort by size", "Sell fresh within 1-2 days"],
-            "malivundo_tips": "Okra loves Pwani heat. Very productive — harvest frequently to keep plants producing."
+            "local_tips": "Okra thrives in Tanzania's warm climate. Harvest frequently to keep plants producing."
         },
         "green bean": {
             "crop": "Green Bean",
             "days_to_maturity": "45-55 days from planting",
             "harvest_signs": ["Pods snap cleanly", "Seeds not yet bulging", "Bright green color"],
             "post_harvest": ["Keep cool", "Sort by size and straightness for export", "Sell within 2 days"],
-            "malivundo_tips": "Good export crop from Pwani. French beans fetch premium prices in European markets."
+            "local_tips": "Good export crop. French beans fetch premium prices in European markets — sort carefully for export grade."
         },
         "maize": {
             "crop": "Maize",
@@ -522,7 +523,7 @@ def get_harvest_recommendation(crop_type: str) -> dict:
                 "Treat with storage pesticide if needed",
                 "Can sell as green maize (roasted) for higher prices at 70-80 days"
             ],
-            "malivundo_tips": "In Pwani, plant at start of long rains (March-April) or short rains (October-November). Watch for Fall Armyworm — scout weekly from germination."
+            "local_tips": "Plant at the start of long rains (March-April) or short rains (October-November). Watch for Fall Armyworm — scout weekly from germination."
         }
     }
     key = crop_type.lower().strip()
@@ -532,14 +533,14 @@ def get_harvest_recommendation(crop_type: str) -> dict:
     return {"error": f"Unknown crop '{crop_type}'. Available crops: " + ", ".join(recommendations.keys())}
 
 
-MALIVUNDO_LAT = -7.1
-MALIVUNDO_LON = 38.7
+TANZANIA_CENTER_LAT = -6.1731
+TANZANIA_CENTER_LON = 35.7395
 
 _weather_cache = {"data": None, "fetched_at": None}
 
 
 def get_weather_forecast() -> dict:
-    """Get the current weather and 7-day forecast for Malivundo, Pwani, Tanzania.
+    """Get the current weather and 7-day forecast for the farmer's region in Tanzania.
     Returns daily temperature (min/max), precipitation, humidity, wind speed, and rain probability.
     Use this to advise on fertigation timing, irrigation scheduling, and weather-sensitive farm operations."""
     now = datetime.now()
@@ -549,7 +550,7 @@ def get_weather_forecast() -> dict:
     try:
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
-            f"latitude={MALIVUNDO_LAT}&longitude={MALIVUNDO_LON}"
+            f"latitude={TANZANIA_CENTER_LAT}&longitude={TANZANIA_CENTER_LON}"
             f"&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code"
             f"&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,weather_code"
             f"&timezone=Africa%2FDar_es_Salaam"
@@ -573,7 +574,7 @@ def get_weather_forecast() -> dict:
         daily = data.get("daily", {})
 
         result = {
-            "location": "Malivundo, Pwani, Tanzania",
+            "location": "Tanzania",
             "current": {
                 "temp": current.get("temperature_2m"),
                 "humidity": current.get("relative_humidity_2m"),
@@ -652,8 +653,8 @@ def get_weather_forecast() -> dict:
         return {
             "error": f"Could not fetch weather data: {str(e)}",
             "fallback": {
-                "location": "Malivundo, Pwani, Tanzania",
-                "climate": "Hot and humid coastal, ~1000mm annual rainfall, dry season June-October",
+                "location": "Tanzania",
+                "climate": "Tropical climate varies by region. Dry season typically June-October in most areas.",
                 "fertigation_general": "Apply fertigation early morning on dry days with low wind. Avoid before expected rain."
             }
         }

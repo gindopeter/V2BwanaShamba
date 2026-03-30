@@ -349,25 +349,9 @@ async function seedData() {
     const hash = bcrypt.hashSync('admin123', 10);
     await dbRun(
       'INSERT INTO users (email, password_hash, first_name, last_name, role, email_verified, language) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      'admin@bwanashamba.com', hash, 'Farm', 'Admin', 'admin', 1, 'en'
+      'admin@bwanashamba.com', hash, 'Platform', 'Admin', 'admin', 1, 'en'
     );
-    console.log('[DB] Seeded default admin: admin@bwanashamba.com / admin123');
-  }
-
-  const zonesCount = await dbGet('SELECT count(*) as count FROM zones');
-  if (zonesCount.count === 0 || zonesCount.count === '0') {
-    const adminUser = await dbGet('SELECT id FROM users WHERE role = ?', 'admin');
-    const adminId = adminUser?.id || 1;
-    const date30DaysAgo = new Date();
-    date30DaysAgo.setDate(date30DaysAgo.getDate() - 30);
-    const date60DaysAgo = new Date();
-    date60DaysAgo.setDate(date60DaysAgo.getDate() - 60);
-
-    await dbRun('INSERT INTO zones (user_id, name, crop_type, planting_date, area_size) VALUES (?, ?, ?, ?, ?)',
-      adminId, 'Zone A', 'Tomato', date30DaysAgo.toISOString().split('T')[0], 2.5);
-    await dbRun('INSERT INTO zones (user_id, name, crop_type, planting_date, area_size) VALUES (?, ?, ?, ?, ?)',
-      adminId, 'Zone B', 'Onion', date60DaysAgo.toISOString().split('T')[0], 2.5);
-    console.log('[DB] Seeded initial zones.');
+    console.log('[DB] Seeded platform admin: admin@bwanashamba.com / admin123');
   }
 }
 

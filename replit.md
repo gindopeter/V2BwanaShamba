@@ -1,6 +1,6 @@
-# BwanaShamba - Farm Operations Dashboard
+# BwanaShamba V2 - Farm Operations Platform
 
-A React + Express app for managing farm operations in Tanzania. It tracks crop zones, irrigation, tasks, and provides an AI-powered multi-agent chatbot and live scouting tool.
+A public multi-tenant React + Express app for farmers across Tanzania. Any farmer can register, manage their own zones, tasks, and irrigation, and get AI-powered advice.
 
 ## Architecture
 
@@ -9,7 +9,7 @@ A React + Express app for managing farm operations in Tanzania. It tracks crop z
 - **AI Backend**: Google ADK (Agent Development Kit) multi-agent service via FastAPI/Uvicorn (port 8001)
 - **Database**: Dual-mode — PostgreSQL (Cloud SQL) in production when `DATABASE_URL` is set, SQLite (`farm.db`) for local development
 - **AI**: Google Gemini (`gemini-2.5-flash`) via Google ADK multi-agent framework + `@google/genai` for live voice. Covers all horticulture crops (tomato, onion, pepper, cabbage, spinach, cucumber, watermelon, eggplant, carrot, lettuce, okra, green bean) and maize.
-- **Weather**: Open-Meteo API (free, no key) — real 7-day forecast for Malivundo (-7.1, 38.7), used by both dashboard and AI agents for fertigation timing
+- **Weather**: Open-Meteo API (free, no key) — real 7-day forecast based on user's registered region (lat/lon from `TANZANIA_REGIONS` constant, defaults to Dodoma), used by both dashboard and AI agents for fertigation timing
 - **Auth**: Self-registration (email OR phone number) with bcryptjs + express-session. Login accepts email or phone via `WHERE email = ? OR phone_number = ?`
 - **i18n**: Full EN/SW bilingual support via `src/lib/i18n.ts` — includes `TANZANIA_DISTRICTS` map (all 29 regions with districts), `CROP_NAMES_SW` Kiswahili crop names, `getCropName()` helper
 - **Recommendations**: `/api/recommendations` endpoint calls Gemini with farm context (zones/tasks/region) and returns 3-4 AI-generated actionable recommendations. Displayed in `RecommendationsBlock.tsx` on the dashboard
@@ -93,12 +93,13 @@ If the ADK service is unavailable, the Node.js server falls back to direct Gemin
 
 ## Auth System
 
-- Admin-managed accounts (no self-registration)
-- Default admin: `admin@bwanashamba.com` / `admin123` (seeded on first run)
+- **Public self-registration** — farmers register via phone (SMS OTP via Africa's Talking) or email
+- Default admin: `admin@bwanashamba.com` / `admin123` (seeded on first run, role: admin, platform-level only)
 - Passwords hashed with bcryptjs (10 rounds)
 - Sessions stored in PostgreSQL (connect-pg-simple) in production, SQLite in development
-- Admin users can create/list/delete other users via `/api/auth/users`
+- Admin users can create/list/edit/deactivate/delete other users via `/api/auth/users`
 - User roles: `admin` or `user`
+- All zone/task/log queries are scoped with `WHERE user_id = ?` for full per-user isolation
 
 ## Running
 
@@ -120,7 +121,7 @@ Both services run as Replit workflows.
 
 ## Features
 
-- **Auth** — Admin-managed email/password login (no self-registration)
+- **Auth** — Public self-registration (phone OTP or email) + admin-managed accounts
 - **Dashboard** — Zone cards (with edit button), task list, weather widget, yield/water stats
 - **Zone Management** — Add, edit, and delete zones from the Active Zones detail view
 - **AI Assistant** — Multi-agent ADK-powered chat with SSE streaming responses, pest scout, irrigation, task planner, and market specialists
