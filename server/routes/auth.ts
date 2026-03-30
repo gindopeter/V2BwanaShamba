@@ -2,6 +2,9 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { dbAll, dbGet, dbRun, isPostgres, getSqliteDb, getPgPool } from '../db.ts';
 import { isAuthenticated, isAdmin } from '../middleware/auth.ts';
+import { createOtp, verifyOtp, sendSmsOtp, ensureOtpTable } from '../services/otp.ts';
+
+ensureOtpTable().catch(err => console.error('[OTP] Table init error:', err));
 
 const router = Router();
 
@@ -104,6 +107,92 @@ router.post('/register', async (req, res) => {
   } catch (err: any) {
     console.error('[register] Error:', err.message);
     res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// ─── POST /api/auth/send-otp ───────────────────────────────────────────────────
+router.post('/send-otp', async (req, res) => {
+  try {
+    const { phone_number, email, lang } = req.body;
+    if (!phone_number && !email) {
+      return res.status(400).json({ message: 'Phone number or email is required' });
+    }
+
+    if (phone_number) {
+      const existing = await dbGet('SELECT id FROM users WHERE phone_number = ?', phone_number);
+      if (existing) return res.status(409).json({ message: 'An account with this phone number already exists' });
+
+      const code = await createOtp(phone_number, 'phone');
+      await sendSmsOtp(phone_number, code, lang || 'en');
+      console.log(`[OTP] SMS sent to ${phone_number}`);
+      return res.json({ success: true, target: phone_number, type: 'phone' });
+    }
+
+    if (email) {
+      const existing = await dbGet('SELECT id FROM users WHERE email = ?', email);
+      if (existing) return res.status(409).json({ message: 'An account with this email already exists' });
+
+      const code = await createOtp(email, 'email');
+      console.log(`[OTP] Email OTP for ${email}: ${code}`);
+      return res.json({ success: true, target: email, type: 'email', dev_code: process.env.NODE_ENV !== 'production' ? code : undefined });
+    }
+  } catch (err: any) {
+    console.error('[send-otp] Error:', err.message);
+    res.status(500).json({ message: err.message || 'Failed to send verification code' });
+  }
+});
+
+// ─── POST /api/auth/verify-otp ────────────────────────────────────────────────
+router.post('/verify-otp', async (req, res) => {
+  try {
+    const { target, code, type, phone_number, email, password, first_name, last_name, language, region, district, farm_size_acres } = req.body;
+
+    const t = target || phone_number || email;
+    const tp = type || (phone_number ? 'phone' : 'email');
+
+    if (!t || !code || !tp) {
+      return res.status(400).json({ message: 'Target, code, and type are required' });
+    }
+
+    const valid = await verifyOtp(t, code, tp as 'phone' | 'email');
+    if (!valid) {
+      return res.status(400).json({ message: 'Invalid or expired verification code' });
+    }
+
+    // OTP verified — now create the account
+    const pw = password;
+    if (!pw || pw.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+
+    const hash = bcrypt.hashSync(pw, 10);
+    const info = await dbRun(
+      'INSERT INTO users (email, phone_number, password_hash, first_name, last_name, role, language, region, district, farm_size_acres, phone_verified, email_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      tp === 'phone' ? null : t,
+      tp === 'phone' ? t : null,
+      hash,
+      first_name, last_name || null, 'user',
+      language || 'en', region || null, district || null, farm_size_acres || null,
+      tp === 'phone' ? 1 : 0,
+      tp === 'email' ? 1 : 0
+    );
+
+    const newUser = await dbGet(
+      'SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres FROM users WHERE id = ?',
+      info.lastInsertRowid
+    );
+
+    req.session.regenerate((err) => {
+      if (err) return res.status(500).json({ message: 'Session error' });
+      req.session.userId = newUser.id;
+      req.session.save((err) => {
+        if (err) return res.status(500).json({ message: 'Session error' });
+        res.json(newUser);
+      });
+    });
+  } catch (err: any) {
+    console.error('[verify-otp] Error:', err.message);
+    res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
