@@ -455,6 +455,9 @@ function WeatherDetailView({ weather, lang }: { weather: any; lang: Language }) 
         <div className="flex items-center justify-between mb-4">
           <div>
             <p className="text-white/50 text-xs font-bold uppercase tracking-wider">{lang === 'sw' ? 'Hali ya Hewa Sasa' : 'Current Weather'}</p>
+            {weather?.location && (
+              <p className="text-white/40 text-[11px] mt-0.5">📍 {weather.location}</p>
+            )}
             <p className="text-4xl font-black mt-1" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>{Math.round(current.temp)}°C</p>
             <p className="text-white/60 text-sm mt-1">{current.condition}</p>
           </div>

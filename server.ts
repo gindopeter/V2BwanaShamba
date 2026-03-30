@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { initDatabase, isPostgres, getSqliteDb, getPgPool, dbAll, dbGet } from './server/db.ts';
 import { isAuthenticated } from './server/middleware/auth.ts';
 import { TANZANIA_REGIONS } from './server/constants/regions.ts';
+import { TANZANIA_DISTRICT_COORDS } from './server/constants/district_coords.ts';
 
 import authRoutes from './server/routes/auth.ts';
 import zoneRoutes from './server/routes/zones.ts';
@@ -117,9 +118,20 @@ async function startServer() {
       userId
     );
 
-    const userProfile = await dbGet('SELECT region FROM users WHERE id = ?', userId);
-    const userRegion = userProfile?.region || 'Tanzania';
-    const coords = TANZANIA_REGIONS[userRegion] || TANZANIA_REGIONS['Dodoma'];
+    const userProfile = await dbGet('SELECT region, district FROM users WHERE id = ?', userId);
+    const userRegion = userProfile?.region || '';
+    const userDistrict = userProfile?.district || '';
+
+    // Use district-level coords if available, fall back to region, then Dodoma
+    const districtCoords = userRegion && userDistrict
+      ? TANZANIA_DISTRICT_COORDS[userRegion]?.[userDistrict]
+      : undefined;
+    const regionCoords = userRegion ? TANZANIA_REGIONS[userRegion] : undefined;
+    const coords = districtCoords || regionCoords || TANZANIA_REGIONS['Dodoma'];
+
+    const locationLabel = userDistrict && userRegion
+      ? `${userDistrict}, ${userRegion}`
+      : userRegion || 'Tanzania';
 
     let weather: any;
 
@@ -160,6 +172,7 @@ async function startServer() {
       }
 
       weather = {
+        location: locationLabel,
         current: {
           temp: weatherData.current?.temperature_2m || 28,
           condition: wmoCondition(weatherData.current?.weather_code || 0),
@@ -177,6 +190,7 @@ async function startServer() {
     } catch (e) {
       console.warn('[weather] Open-Meteo fetch failed, using safe defaults:', (e as Error).message);
       weather = {
+        location: locationLabel,
         current: { temp: 29, condition: 'Data unavailable', humidity: 60, wind: 10 },
         nextDay: { tempHigh: 31, tempLow: 23, forecastRain: 0, condition: 'Data unavailable' },
         forecast: [],
