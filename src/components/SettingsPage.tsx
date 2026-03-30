@@ -55,6 +55,15 @@ function ProfileSection({ user, onUserUpdate, lang = 'en' }: { user: AuthUser; o
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  useEffect(() => {
+    setFirstName(user.first_name || '');
+    setLastName(user.last_name || '');
+    setLanguage((user.language as Language) || 'en');
+    setRegion(user.region || '');
+    setDistrict(user.district || '');
+    setFarmSize(user.farm_size_acres ? String(user.farm_size_acres) : '');
+  }, [user.id, user.first_name, user.last_name, user.language, user.region, user.district, user.farm_size_acres]);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);

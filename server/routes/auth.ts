@@ -38,12 +38,18 @@ router.post('/login', async (req, res) => {
 
       req.session.save((err) => {
         if (err) return res.status(500).json({ message: 'Session error' });
+        const farmSize = user.farm_size_acres != null ? parseFloat(user.farm_size_acres) : null;
         res.json({
           id: user.id,
           email: user.email,
+          phone_number: user.phone_number,
           first_name: user.first_name,
           last_name: user.last_name,
           role: user.role,
+          language: user.language,
+          region: user.region,
+          district: user.district,
+          farm_size_acres: farmSize,
         });
       });
     });
@@ -95,6 +101,7 @@ router.post('/register', async (req, res) => {
       'SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres FROM users WHERE id = ?',
       info.lastInsertRowid
     );
+    if (newUser && newUser.farm_size_acres != null) newUser.farm_size_acres = parseFloat(newUser.farm_size_acres);
 
     req.session.regenerate((err) => {
       if (err) return res.status(500).json({ message: 'Session error' });
@@ -181,6 +188,7 @@ router.post('/verify-otp', async (req, res) => {
       'SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres FROM users WHERE id = ?',
       info.lastInsertRowid
     );
+    if (newUser && newUser.farm_size_acres != null) newUser.farm_size_acres = parseFloat(newUser.farm_size_acres);
 
     req.session.regenerate((err) => {
       if (err) return res.status(500).json({ message: 'Session error' });
@@ -203,6 +211,7 @@ router.get('/user', isAuthenticated, async (req, res) => {
     req.session.userId!
   );
   if (!user) return res.status(401).json({ message: 'User not found' });
+  if (user.farm_size_acres != null) user.farm_size_acres = parseFloat(user.farm_size_acres);
   res.json(user);
 });
 
@@ -238,16 +247,18 @@ router.put('/password', isAuthenticated, async (req, res) => {
 router.put('/profile', isAuthenticated, async (req, res) => {
   try {
     const { first_name, last_name, language, region, district, farm_size_acres } = req.body;
+    const parsedFarmSize = farm_size_acres != null && farm_size_acres !== '' ? parseFloat(farm_size_acres) : null;
     await dbRun(
       'UPDATE users SET first_name = ?, last_name = ?, language = ?, region = ?, district = ?, farm_size_acres = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       first_name || null, last_name || null, language || 'en',
-      region || null, district || null, farm_size_acres || null,
+      region || null, district || null, parsedFarmSize,
       req.session.userId!
     );
     const user = await dbGet(
       'SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres, created_at FROM users WHERE id = ?',
       req.session.userId!
     );
+    if (user && user.farm_size_acres != null) user.farm_size_acres = parseFloat(user.farm_size_acres);
     res.json(user);
   } catch {
     res.status(500).json({ message: 'Internal server error' });
