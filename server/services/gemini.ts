@@ -82,7 +82,7 @@ export async function createEphemeralToken(): Promise<string> {
           uses: 1,
           expire_time: expireTime,
           new_session_config: {
-            model: 'models/gemini-2.5-flash',
+            model: 'models/gemini-2.0-flash-live-001',
           },
         },
       }),

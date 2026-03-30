@@ -223,8 +223,6 @@ export default function LiveScout() {
     await startCameraWithMode(newMode);
   };
 
-  const pendingAutoSendRef = useRef<string | null>(null);
-
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -235,9 +233,6 @@ export default function LiveScout() {
       reader.onloadend = () => {
         const dataUrl = reader.result as string;
         setUploadedMedia(dataUrl);
-        if (!isVideo) {
-          pendingAutoSendRef.current = dataUrl;
-        }
       };
       reader.readAsDataURL(file);
     }
@@ -427,13 +422,6 @@ export default function LiveScout() {
 
   const handleSendTextRef = useRef(handleSendText);
   handleSendTextRef.current = handleSendText;
-
-  useEffect(() => {
-    if (pendingAutoSendRef.current && uploadedMedia === pendingAutoSendRef.current && !isProcessing) {
-      pendingAutoSendRef.current = null;
-      handleSendTextRef.current('Analyze this image and tell me what you see. Check for pests, diseases, or any issues.');
-    }
-  }, [uploadedMedia, isProcessing]);
 
   const startLiveVoice = async () => {
     try {
@@ -710,8 +698,8 @@ export default function LiveScout() {
       };
 
       const LIVE_MODELS = [
-        "gemini-2.5-flash-native-audio-preview-12-2025",
-        "gemini-2.5-flash-native-audio-latest",
+        "gemini-2.0-flash-live-001",
+        "gemini-2.0-flash-exp",
       ];
 
       let resolvedSession: any = null;
