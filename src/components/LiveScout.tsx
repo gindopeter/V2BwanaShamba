@@ -421,248 +421,113 @@ export default function LiveScout() {
   const handleSendTextRef = useRef(handleSendText);
   handleSendTextRef.current = handleSendText;
 
+  const speakVoiceText = (text: string, onEnd?: () => void) => {
+    if (!window.speechSynthesis) { onEnd?.(); return; }
+    window.speechSynthesis.cancel();
+    const clean = text
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/[-*+]\s/g, '')
+      .replace(/\n\n+/g, '. ')
+      .replace(/\n/g, ' ')
+      .trim();
+    const utter = new SpeechSynthesisUtterance(clean);
+    utter.lang = 'sw-TZ';
+    utter.rate = 1.0;
+    isAiSpeakingRef.current = true;
+    utter.onend = () => { isAiSpeakingRef.current = false; onEnd?.(); };
+    utter.onerror = () => { isAiSpeakingRef.current = false; onEnd?.(); };
+    window.speechSynthesis.speak(utter);
+  };
+
   const startLiveVoice = async () => {
-    try {
-      setIsLiveVoice(true);
-      isLiveVoiceRef.current = true;
-      sessionReadyRef.current = false;
-      voiceMessagesRef.current = [];
-
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = false;
-        recognition.lang = 'sw-TZ';
-        recognition.onresult = (event: any) => {
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            if (event.results[i].isFinal) {
-              const transcript = event.results[i][0].transcript.trim();
-              if (transcript) {
-                if (isAiSpeakingRef.current || aiJustFinishedRef.current) {
-                  setMessages(prev => [...prev, { role: 'ai', text: transcript }]);
-                  voiceMessagesRef.current.push({ role: 'ai', text: transcript });
-                  aiJustFinishedRef.current = false;
-                } else {
-                  setMessages(prev => [...prev, { role: 'user', text: transcript }]);
-                  voiceMessagesRef.current.push({ role: 'user', text: transcript });
-                }
-              }
-            }
-          }
-        };
-        recognition.onerror = (event: any) => {
-          if (event.error !== 'aborted' && event.error !== 'no-speech') {
-            console.log('[LiveVoice] Speech recognition error:', event.error);
-          }
-        };
-        recognition.onend = () => {
-          if (isLiveVoiceRef.current) {
-            try { recognition.start(); } catch {}
-          }
-        };
-        try {
-          recognition.start();
-          speechRecognitionRef.current = recognition;
-        } catch (err) {
-          console.log('[LiveVoice] Could not start speech recognition:', err);
-        }
-      }
-
-      let currentAudioStream: MediaStream;
-      try {
-        currentAudioStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-        audioStreamRef.current = currentAudioStream;
-      } catch (err: any) {
-        console.error('[LiveVoice] Microphone error:', err);
-        alert(`Microphone access error: ${err.message || 'Denied or unavailable.'}`);
-        setIsLiveVoice(false);
-        isLiveVoiceRef.current = false;
-        return;
-      }
-
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      audioContextRef.current = audioCtx;
-      nextPlayTimeRef.current = audioCtx.currentTime;
-
-      const source = audioCtx.createMediaStreamSource(currentAudioStream);
-      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-      processorRef.current = processor;
-      source.connect(processor);
-      processor.connect(audioCtx.destination);
-
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${window.location.host}/api/live-voice-ws`;
-      console.log('[LiveVoice] Connecting to proxy:', wsUrl);
-      const ws = new WebSocket(wsUrl);
-      liveWsRef.current = ws;
-
-      const VAD_THRESHOLD = 0.012;
-      const VAD_FRAMES_TO_TRIGGER = 2;
-      let vadActiveFrames = 0;
-      let audioChunksSent = 0;
-
-      ws.onopen = () => {
-        console.log('[LiveVoice] Server WebSocket opened');
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-
-          if (msg.type === 'ready') {
-            console.log('[LiveVoice] Session ready');
-            sessionReadyRef.current = true;
-            setMessages(prev => [...prev, { role: 'system', text: 'Live voice session started. Speak to your AI assistant.' }]);
-
-            processor.onaudioprocess = (e) => {
-              if (!isLiveVoiceRef.current || !sessionReadyRef.current) return;
-              const inputData = e.inputBuffer.getChannelData(0);
-              let sum = 0;
-              for (let i = 0; i < inputData.length; i++) sum += Math.abs(inputData[i]);
-              const avgAmplitude = sum / inputData.length;
-              if (avgAmplitude > VAD_THRESHOLD) {
-                vadActiveFrames++;
-                if (vadActiveFrames >= VAD_FRAMES_TO_TRIGGER && isAiSpeakingRef.current) stopAiAudio();
-              } else {
-                vadActiveFrames = 0;
-              }
-              try {
-                const downsampled = downsample(inputData, audioCtx.sampleRate, 16000);
-                const base64 = float32ToBase64(downsampled);
-                if (ws.readyState === WebSocket.OPEN) {
-                  ws.send(JSON.stringify({ type: 'audio', data: base64 }));
-                  audioChunksSent++;
-                  if (audioChunksSent % 100 === 1) {
-                    console.log(`[LiveVoice] Audio chunks: ${audioChunksSent}, amplitude: ${avgAmplitude.toFixed(4)}`);
-                  }
-                }
-              } catch (err) {
-                console.error('[LiveVoice] Error sending audio:', err);
-              }
-            };
-
-            frameIntervalRef.current = setInterval(() => {
-              if (!isLiveVoiceRef.current || !sessionReadyRef.current) return;
-              if (videoRef.current && canvasRef.current && isCameraActiveRef.current) {
-                const ctx = canvasRef.current.getContext('2d');
-                if (ctx && videoRef.current.videoWidth > 0) {
-                  canvasRef.current.width = 640;
-                  canvasRef.current.height = Math.round((videoRef.current.videoHeight / videoRef.current.videoWidth) * 640);
-                  ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
-                  const base64Image = canvasRef.current.toDataURL('image/jpeg', 0.5).split(',')[1];
-                  if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: 'image', data: base64Image }));
-                  }
-                }
-              }
-            }, 3000);
-
-            return;
-          }
-
-          if (msg.type === 'interrupted') {
-            stopAiAudio();
-            return;
-          }
-
-          if (msg.type === 'audio' && msg.data) {
-            isAiSpeakingRef.current = true;
-            aiJustFinishedRef.current = false;
-            try {
-              const float32Data = base64ToFloat32(msg.data);
-              const buffer = audioCtx.createBuffer(1, float32Data.length, 24000);
-              buffer.getChannelData(0).set(float32Data);
-              const playSource = audioCtx.createBufferSource();
-              playSource.buffer = buffer;
-              playSource.connect(audioCtx.destination);
-              activeSourcesRef.current.push(playSource);
-              playSource.onended = () => {
-                activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== playSource);
-                if (activeSourcesRef.current.length === 0) isAiSpeakingRef.current = false;
-              };
-              const startTime = Math.max(audioCtx.currentTime, nextPlayTimeRef.current);
-              playSource.start(startTime);
-              nextPlayTimeRef.current = startTime + buffer.duration;
-            } catch (err) {
-              console.error('[LiveVoice] Error playing audio:', err);
-            }
-            return;
-          }
-
-          if (msg.type === 'output_transcript' && msg.text) {
-            console.log('[LiveVoice] AI transcript:', msg.text.substring(0, 80));
-            setMessages(prev => {
-              const last = prev[prev.length - 1];
-              if (last && last.role === 'ai' && (last as any)._voiceTranscript) {
-                const updated = [...prev];
-                updated[updated.length - 1] = { role: 'ai', text: last.text + msg.text, _voiceTranscript: true } as any;
-                return updated;
-              }
-              return [...prev, { role: 'ai', text: msg.text, _voiceTranscript: true } as any];
-            });
-            voiceMessagesRef.current.push({ role: 'ai', text: msg.text });
-            return;
-          }
-
-          if (msg.type === 'input_transcript' && msg.text) {
-            console.log('[LiveVoice] User transcript:', msg.text.substring(0, 80));
-            setMessages(prev => {
-              const last = prev[prev.length - 1];
-              if (last && last.role === 'user' && (last as any)._voiceTranscript) {
-                const updated = [...prev];
-                updated[updated.length - 1] = { role: 'user', text: last.text + msg.text, _voiceTranscript: true } as any;
-                return updated;
-              }
-              return [...prev, { role: 'user', text: msg.text, _voiceTranscript: true } as any];
-            });
-            voiceMessagesRef.current.push({ role: 'user', text: msg.text });
-            return;
-          }
-
-          if (msg.type === 'turn_complete') {
-            isAiSpeakingRef.current = false;
-            aiJustFinishedRef.current = true;
-            setTimeout(() => { aiJustFinishedRef.current = false; }, 3000);
-            return;
-          }
-
-          if (msg.type === 'error') {
-            console.error('[LiveVoice] Server error:', msg.message);
-            if (isLiveVoiceRef.current) {
-              setMessages(prev => [...prev, { role: 'system', text: `Live voice error: ${msg.message}` }]);
-              stopLiveVoice();
-            }
-            return;
-          }
-        } catch (err) {
-          console.error('[LiveVoice] Error parsing server message:', err);
-        }
-      };
-
-      ws.onerror = (event) => {
-        console.error('[LiveVoice] WebSocket error:', event);
-        if (isLiveVoiceRef.current) {
-          setMessages(prev => [...prev, { role: 'system', text: 'Live voice connection error.' }]);
-          stopLiveVoice();
-        }
-      };
-
-      ws.onclose = (event) => {
-        console.log('[LiveVoice] WebSocket closed:', event.code, event.reason);
-        sessionReadyRef.current = false;
-        if (isLiveVoiceRef.current) {
-          const reason = event.reason || '';
-          setMessages(prev => [...prev, { role: 'system', text: reason ? `Live session ended: ${reason}` : 'Live session ended.' }]);
-          stopLiveVoice();
-        }
-      };
-
-    } catch (err: any) {
-      console.error('[LiveVoice] Fatal error:', err);
-      alert(`Failed to start live voice: ${err.message || 'Unknown error'}`);
-      stopLiveVoice();
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Speech recognition is not supported in your browser. Please use Chrome or Edge.');
+      return;
     }
+
+    setIsLiveVoice(true);
+    isLiveVoiceRef.current = true;
+    sessionReadyRef.current = false;
+    voiceMessagesRef.current = [];
+
+    setMessages(prev => [...prev, { role: 'system', text: 'Live voice session started. Speak to your AI assistant in English or Kiswahili.' }]);
+
+    let voiceConvId: number | null = activeConversationId;
+
+    const listenAndRespond = () => {
+      if (!isLiveVoiceRef.current) return;
+
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'sw-TZ';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      speechRecognitionRef.current = recognition;
+
+      let handled = false;
+
+      recognition.onresult = async (event: any) => {
+        const transcript = event.results[0]?.[0]?.transcript?.trim();
+        if (!transcript || !isLiveVoiceRef.current) return;
+        handled = true;
+        try { recognition.stop(); } catch {}
+
+        setMessages(prev => [...prev, { role: 'user', text: transcript }]);
+        voiceMessagesRef.current.push({ role: 'user', text: transcript });
+
+        try {
+          const chatRes = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: transcript, conversationId: voiceConvId, stream: false })
+          });
+          if (!chatRes.ok) throw new Error(`Server ${chatRes.status}`);
+          const data = await chatRes.json();
+          if (data.conversationId) {
+            voiceConvId = data.conversationId;
+            setActiveConversationId(data.conversationId);
+          }
+          const reply: string = data.reply || data.message || '';
+          if (reply && isLiveVoiceRef.current) {
+            setMessages(prev => [...prev, { role: 'ai', text: reply }]);
+            voiceMessagesRef.current.push({ role: 'ai', text: reply });
+            loadConversations();
+            speakVoiceText(reply, () => {
+              if (isLiveVoiceRef.current) setTimeout(listenAndRespond, 400);
+            });
+          } else if (isLiveVoiceRef.current) {
+            listenAndRespond();
+          }
+        } catch (err: any) {
+          console.error('[LiveVoice] Chat error:', err);
+          if (isLiveVoiceRef.current) {
+            setMessages(prev => [...prev, { role: 'system', text: `Error: ${err.message}` }]);
+            setTimeout(listenAndRespond, 1500);
+          }
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        if (event.error === 'no-speech' || event.error === 'aborted') {
+          if (isLiveVoiceRef.current && !handled) setTimeout(listenAndRespond, 300);
+          return;
+        }
+        console.error('[LiveVoice] Recognition error:', event.error);
+        if (isLiveVoiceRef.current && !handled) setTimeout(listenAndRespond, 1000);
+      };
+
+      recognition.onend = () => {};
+
+      try { recognition.start(); } catch (err) {
+        console.error('[LiveVoice] Could not start recognition:', err);
+        if (isLiveVoiceRef.current) setTimeout(listenAndRespond, 1000);
+      }
+    };
+
+    listenAndRespond();
   };
 
   const voiceMessagesRef = useRef<{role: string, text: string}[]>([]);
@@ -696,16 +561,25 @@ export default function LiveScout() {
 
   const stopLiveVoice = () => {
     const hasMessagesToSave = voiceMessagesRef.current.length > 0;
-    if (!isLiveVoiceRef.current && !processorRef.current && !audioStreamRef.current && !liveWsRef.current) {
+    if (!isLiveVoiceRef.current) {
       if (hasMessagesToSave) saveVoiceTranscript();
       return;
     }
     isLiveVoiceRef.current = false;
     sessionReadyRef.current = false;
     setIsLiveVoice(false);
-    stopAiAudio();
+    isAiSpeakingRef.current = false;
+    try { window.speechSynthesis?.cancel(); } catch {}
+    if (speechRecognitionRef.current) {
+      try { speechRecognitionRef.current.stop(); } catch {}
+      speechRecognitionRef.current = null;
+    }
+    if (liveWsRef.current) {
+      try { liveWsRef.current.close(); } catch {}
+      liveWsRef.current = null;
+    }
     if (processorRef.current) {
-      processorRef.current.disconnect();
+      try { processorRef.current.disconnect(); } catch {}
       processorRef.current = null;
     }
     if (audioStreamRef.current) {
@@ -719,14 +593,6 @@ export default function LiveScout() {
     if (audioContextRef.current) {
       audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
-    }
-    if (liveWsRef.current) {
-      try { liveWsRef.current.close(); } catch {}
-      liveWsRef.current = null;
-    }
-    if (speechRecognitionRef.current) {
-      try { speechRecognitionRef.current.stop(); } catch {}
-      speechRecognitionRef.current = null;
     }
     setMessages(prev => [...prev, { role: 'system', text: 'Live voice session ended.' }]);
     saveVoiceTranscript();

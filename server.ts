@@ -258,7 +258,7 @@ async function startServer() {
   }
 
   const httpServer = http.createServer(app);
-  setupLiveVoiceProxy(httpServer, sessionMiddleware);
+  setupLiveVoiceProxy(httpServer);
 
   httpServer.listen(port, () => {
     console.log(`[startup] Server running on port ${port}`);

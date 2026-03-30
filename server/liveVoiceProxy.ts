@@ -1,6 +1,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server as HttpServer, IncomingMessage } from 'http';
 import { GoogleGenAI, Modality } from '@google/genai';
+import { randomUUID } from 'crypto';
+import { URL } from 'url';
 
 const SYSTEM_INSTRUCTION =
   'You are BwanaShamba, an AI farm supervisor helping farmers across Tanzania manage their farms. ' +
@@ -11,7 +13,28 @@ const SYSTEM_INSTRUCTION =
   'IMPORTANT LANGUAGE RULE: Match the user\'s language exactly. If they speak Kiswahili, respond entirely ' +
   'in Kiswahili. If they speak English, respond in English. Switch immediately when they switch languages.';
 
-async function handleSession(ws: WebSocket) {
+interface LiveToken {
+  userId: number;
+  expiresAt: number;
+}
+
+const liveTokens = new Map<string, LiveToken>();
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, data] of liveTokens) {
+    if (data.expiresAt < now) liveTokens.delete(token);
+  }
+}, 30_000);
+
+export function issueLiveToken(userId: number): string {
+  const token = randomUUID();
+  liveTokens.set(token, { userId, expiresAt: Date.now() + 30_000 });
+  return token;
+}
+
+async function handleSession(ws: WebSocket, userId: number) {
+  console.log(`[LiveProxy] Starting Gemini Live session for user ${userId}`);
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     ws.send(JSON.stringify({ type: 'error', message: 'Gemini API key not configured on server.' }));
@@ -24,11 +47,12 @@ async function handleSession(ws: WebSocket) {
 
   const send = (payload: object) => {
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(payload));
+      try { ws.send(JSON.stringify(payload)); } catch {}
     }
   };
 
   try {
+    console.log('[LiveProxy] Connecting to Gemini Live API...');
     geminiSession = await ai.live.connect({
       model: 'gemini-2.0-flash-live-001',
       config: {
@@ -40,11 +64,11 @@ async function handleSession(ws: WebSocket) {
       },
       callbacks: {
         onopen: () => {
-          console.log('[LiveProxy] Gemini session opened');
+          console.log('[LiveProxy] Gemini WebSocket opened');
         },
         onmessage: (message: any) => {
           if (message.setupComplete) {
-            console.log('[LiveProxy] Setup complete');
+            console.log('[LiveProxy] Gemini setup complete — session ready');
             send({ type: 'ready' });
             return;
           }
@@ -76,16 +100,17 @@ async function handleSession(ws: WebSocket) {
           }
         },
         onerror: (error: any) => {
-          console.error('[LiveProxy] Gemini error:', error);
+          console.error('[LiveProxy] Gemini error:', error?.message || error);
           send({ type: 'error', message: error?.message || 'Gemini Live error' });
           if (ws.readyState === WebSocket.OPEN) ws.close();
         },
         onclose: (event: any) => {
-          console.log('[LiveProxy] Gemini closed:', event?.code, event?.reason);
+          console.log('[LiveProxy] Gemini session closed:', event?.code, event?.reason);
           if (ws.readyState === WebSocket.OPEN) ws.close();
         },
       },
     });
+    console.log('[LiveProxy] ai.live.connect() returned — waiting for setupComplete');
   } catch (err: any) {
     console.error('[LiveProxy] Failed to connect to Gemini Live:', err.message);
     send({ type: 'error', message: err.message || 'Failed to connect to Gemini Live API' });
@@ -108,7 +133,7 @@ async function handleSession(ws: WebSocket) {
   });
 
   ws.on('close', () => {
-    console.log('[LiveProxy] Client disconnected, closing Gemini session');
+    console.log(`[LiveProxy] Client disconnected (user ${userId}), closing Gemini session`);
     if (geminiSession) {
       try { geminiSession.close(); } catch {}
       geminiSession = null;
@@ -116,26 +141,43 @@ async function handleSession(ws: WebSocket) {
   });
 }
 
-export function setupLiveVoiceProxy(
-  server: HttpServer,
-  sessionMiddleware: (req: any, res: any, next: () => void) => void
-) {
+export function setupLiveVoiceProxy(server: HttpServer) {
   const wss = new WebSocketServer({ noServer: true });
 
   server.on('upgrade', (request: IncomingMessage, socket, head) => {
-    if (request.url !== '/api/live-voice-ws') return;
+    const baseUrl = `http://${request.headers.host}`;
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(request.url || '', baseUrl);
+    } catch {
+      return;
+    }
 
-    sessionMiddleware(request as any, {} as any, () => {
-      const userId = (request as any).session?.userId;
-      if (!userId) {
-        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-        socket.destroy();
-        return;
-      }
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        console.log(`[LiveProxy] WebSocket connected for user ${userId}`);
-        handleSession(ws);
-      });
+    if (parsedUrl.pathname !== '/api/live-voice-ws') return;
+
+    const token = parsedUrl.searchParams.get('token');
+    console.log(`[LiveProxy] Upgrade request, token=${token ? token.substring(0, 8) + '...' : 'none'}`);
+
+    if (!token) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    const tokenData = liveTokens.get(token);
+    if (!tokenData || tokenData.expiresAt < Date.now()) {
+      console.warn('[LiveProxy] Invalid or expired token');
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    liveTokens.delete(token);
+    const { userId } = tokenData;
+
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      console.log(`[LiveProxy] WebSocket upgraded for user ${userId}`);
+      handleSession(ws, userId);
     });
   });
 
