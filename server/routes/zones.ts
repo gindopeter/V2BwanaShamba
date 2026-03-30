@@ -82,6 +82,18 @@ router.post('/', isAuthenticated, async (req, res) => {
       return res.status(400).json({ message: 'area_size must be a positive number' });
     }
 
+    // Enforce farm size limit
+    const userRecord = await dbGet('SELECT farm_size_acres FROM users WHERE id = ?', userId) as any;
+    const farmSizeAcres = userRecord?.farm_size_acres ? parseFloat(userRecord.farm_size_acres) : null;
+    if (farmSizeAcres) {
+      const existing = await dbGet('SELECT COALESCE(SUM(area_size), 0) AS total FROM zones WHERE user_id = ?', userId) as any;
+      const usedAcres = parseFloat(existing?.total || 0);
+      if (usedAcres + parsedArea > farmSizeAcres) {
+        const available = parseFloat((farmSizeAcres - usedAcres).toFixed(2));
+        return res.status(400).json({ message: `Zone size exceeds available farm space. You have ${available} acres remaining of your ${farmSizeAcres}-acre farm.` });
+      }
+    }
+
     const info = await dbRun(
       'INSERT INTO zones (user_id, name, crop_type, planting_date, area_size) VALUES (?, ?, ?, ?, ?)',
       userId,
@@ -126,6 +138,21 @@ router.put('/:id', isAuthenticated, async (req, res) => {
       const parsed = parseFloat(area_size);
       if (isNaN(parsed) || parsed <= 0) {
         return res.status(400).json({ message: 'area_size must be a positive number' });
+      }
+
+      // Enforce farm size limit (exclude current zone from the sum)
+      const userRecord = await dbGet('SELECT farm_size_acres FROM users WHERE id = ?', userId) as any;
+      const farmSizeAcres = userRecord?.farm_size_acres ? parseFloat(userRecord.farm_size_acres) : null;
+      if (farmSizeAcres) {
+        const others = await dbGet(
+          'SELECT COALESCE(SUM(area_size), 0) AS total FROM zones WHERE user_id = ? AND id != ?',
+          userId, Number(id)
+        ) as any;
+        const otherAcres = parseFloat(others?.total || 0);
+        if (otherAcres + parsed > farmSizeAcres) {
+          const available = parseFloat((farmSizeAcres - otherAcres).toFixed(2));
+          return res.status(400).json({ message: `Zone size exceeds available farm space. You can allocate up to ${available} acres for this zone.` });
+        }
       }
     }
 

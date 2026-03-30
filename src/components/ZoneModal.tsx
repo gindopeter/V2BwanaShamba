@@ -10,6 +10,7 @@ interface ZoneModalProps {
   onDelete?: (id: number) => Promise<void>;
   lang?: Language;
   maxAreaSize?: number;
+  usedAcres?: number;
 }
 
 const CROP_LIST = [
@@ -34,7 +35,7 @@ const CROP_EMOJI: Record<string, string> = {
   Okra: '🌿', 'Green Bean': '🫘', Maize: '🌽',
 };
 
-export default function ZoneModal({ zone, onClose, onSave, onDelete, lang = 'en', maxAreaSize }: ZoneModalProps) {
+export default function ZoneModal({ zone, onClose, onSave, onDelete, lang = 'en', maxAreaSize, usedAcres = 0 }: ZoneModalProps) {
   const isEditing = !!zone;
   const today = new Date().toISOString().split('T')[0];
 
@@ -53,13 +54,16 @@ export default function ZoneModal({ zone, onClose, onSave, onDelete, lang = 'en'
     e.preventDefault();
     if (!name.trim() || saving) return;
 
-    if (maxAreaSize && Number(areaSize) > maxAreaSize) {
-      setError(
-        lang === 'sw'
-          ? `Ukubwa wa eneo (${areaSize} ekari) hauwezi kuzidi ukubwa wa shamba lako (${maxAreaSize} ekari)`
-          : `Zone size (${areaSize} acres) cannot exceed your total farm size (${maxAreaSize} acres)`
-      );
-      return;
+    if (maxAreaSize) {
+      const available = parseFloat((maxAreaSize - usedAcres).toFixed(2));
+      if (Number(areaSize) > available) {
+        setError(
+          lang === 'sw'
+            ? `Ukubwa wa eneo (${areaSize} ekari) unazidi nafasi iliyobaki kwenye shamba lako (${available} ekari)`
+            : `Zone size (${areaSize} acres) exceeds remaining farm space (${available} acres available)`
+        );
+        return;
+      }
     }
 
     if (plantingDate > today) {
@@ -164,7 +168,9 @@ export default function ZoneModal({ zone, onClose, onSave, onDelete, lang = 'en'
               {t(lang, 'areaSize')}
               {maxAreaSize ? (
                 <span className="ml-2 normal-case font-normal text-[#5d6c7b]/60">
-                  ({lang === 'sw' ? `max: ${maxAreaSize} ekari` : `max: ${maxAreaSize} acres`})
+                  {lang === 'sw'
+                    ? `zilizobaki: ${parseFloat((maxAreaSize - usedAcres).toFixed(2))} / ${maxAreaSize} ekari`
+                    : `available: ${parseFloat((maxAreaSize - usedAcres).toFixed(2))} / ${maxAreaSize} acres`}
                 </span>
               ) : null}
             </label>
@@ -172,7 +178,7 @@ export default function ZoneModal({ zone, onClose, onSave, onDelete, lang = 'en'
               type="number"
               step="0.1"
               min="0.1"
-              max={maxAreaSize || undefined}
+              max={maxAreaSize ? parseFloat((maxAreaSize - usedAcres).toFixed(2)) : undefined}
               value={areaSize}
               onChange={e => setAreaSize(Number(e.target.value))}
               className={inputClass}

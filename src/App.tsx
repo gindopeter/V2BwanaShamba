@@ -341,6 +341,7 @@ export default function App() {
             onSave={handleCreateZone}
             lang={lang}
             maxAreaSize={user?.farm_size_acres}
+            usedAcres={zones.reduce((sum, z) => sum + z.area_size, 0)}
           />
         )}
 
@@ -352,6 +353,7 @@ export default function App() {
             onDelete={handleDeleteZone}
             lang={lang}
             maxAreaSize={user?.farm_size_acres}
+            usedAcres={zones.filter(z => z.id !== editingZone.id).reduce((sum, z) => sum + z.area_size, 0)}
           />
         )}
       </div>
