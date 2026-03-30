@@ -267,6 +267,16 @@ async function runMigrations() {
       await pgPool.query("ALTER TABLE users ADD COLUMN phone_verified INTEGER DEFAULT 0");
     }
 
+    // Allow phone-only registration: drop NOT NULL on email if it exists
+    try {
+      await pgPool.query("ALTER TABLE users ALTER COLUMN email DROP NOT NULL");
+    } catch {}
+
+    // Add current_growth_day to zones if missing
+    if (colNames.length > 0 && !colNames.includes('current_growth_day')) {
+      await pgPool.query("ALTER TABLE zones ADD COLUMN current_growth_day INTEGER DEFAULT 0");
+    }
+
     try {
       await pgPool.query("CREATE TABLE IF NOT EXISTS guest_chat_logs (id SERIAL PRIMARY KEY, ip_address TEXT NOT NULL, message_count INTEGER DEFAULT 1, first_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
     } catch {}
@@ -309,6 +319,10 @@ async function runMigrations() {
     }
     if (usersColumns.length > 0 && !usersColumns.includes('phone_verified')) {
       sqliteDb.exec("ALTER TABLE users ADD COLUMN phone_verified INTEGER DEFAULT 0");
+    }
+
+    if (!columnNames.includes('current_growth_day')) {
+      sqliteDb.exec("ALTER TABLE zones ADD COLUMN current_growth_day INTEGER DEFAULT 0");
     }
 
     try {
