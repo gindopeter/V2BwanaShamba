@@ -214,6 +214,18 @@ async function createSchema() {
     )
   `);
   await dbExec(`CREATE INDEX IF NOT EXISTS idx_chat_messages_conv ON chat_messages(conversation_id)`);
+
+  await dbExec(`
+    CREATE TABLE IF NOT EXISTS otp_codes (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      target TEXT NOT NULL,
+      code TEXT NOT NULL,
+      type TEXT NOT NULL,
+      expires_at ${isPostgres ? 'TIMESTAMP' : 'TEXT'} NOT NULL,
+      used INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
 }
 
 async function runMigrations() {
