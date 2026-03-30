@@ -111,7 +111,6 @@ async function startServer() {
   app.use('/api/zones', zoneRoutes);
   app.use('/api/tasks', taskRoutes);
   app.use('/api/chat', chatRoutes);
-  app.use('/api/conversations', chatRoutes);
 
   app.post('/api/engine/run-checks', isAuthenticated, async (req, res) => {
     const userId = req.session.userId!;

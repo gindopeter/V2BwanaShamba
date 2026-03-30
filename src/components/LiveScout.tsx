@@ -117,7 +117,7 @@ export default function LiveScout() {
 
   const loadConversations = async () => {
     try {
-      const res = await fetch('/api/conversations');
+      const res = await fetch('/api/chat/conversations');
       if (res.ok) {
         const data = await res.json();
         setConversations(data);
@@ -129,7 +129,7 @@ export default function LiveScout() {
 
   const loadConversation = async (convId: number) => {
     try {
-      const res = await fetch(`/api/conversations/${convId}/messages`);
+      const res = await fetch(`/api/chat/conversations/${convId}/messages`);
       if (res.ok) {
         const data = await res.json();
         const loadedMessages = data
@@ -157,7 +157,7 @@ export default function LiveScout() {
   const deleteConversation = async (convId: number, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await fetch(`/api/conversations/${convId}`, { method: 'DELETE' });
+      await fetch(`/api/chat/conversations/${convId}`, { method: 'DELETE' });
       if (activeConversationId === convId) {
         startNewConversation();
       }
