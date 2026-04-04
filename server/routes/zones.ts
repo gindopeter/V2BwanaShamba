@@ -44,7 +44,16 @@ router.get('/', isAuthenticated, async (req, res) => {
       const baseYield = getYieldPerAcre(zone.crop_type);
       const predictedYield = zone.expected_yield_kg
         ? zone.expected_yield_kg
-        : Math.round(zone.area_size * baseYield * (0.9 + Math.random() * 0.2));
+        : Math.round(zone.area_size * baseYield);
+
+      // Backfill: persist the calculated value for legacy zones that had 0 stored
+      if (!zone.expected_yield_kg) {
+        dbRun(
+          'UPDATE zones SET expected_yield_kg = ? WHERE id = ?',
+          predictedYield,
+          zone.id
+        ).catch(() => {});
+      }
 
       return {
         ...zone,
@@ -94,16 +103,20 @@ router.post('/', isAuthenticated, async (req, res) => {
       }
     }
 
+    // Calculate and persist expected yield immediately — no random factor
+    const expectedYieldKg = Math.round(parsedArea * getYieldPerAcre(crop_type));
+
     const info = await dbRun(
-      'INSERT INTO zones (user_id, name, crop_type, planting_date, area_size) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO zones (user_id, name, crop_type, planting_date, area_size, expected_yield_kg) VALUES (?, ?, ?, ?, ?, ?)',
       userId,
       name.trim(),
       crop_type,
       planting_date,
-      parsedArea
+      parsedArea,
+      expectedYieldKg
     );
 
-    res.status(201).json({ id: info.lastInsertRowid });
+    res.status(201).json({ id: info.lastInsertRowid, expected_yield_kg: expectedYieldKg });
   } catch (err: any) {
     console.error('[zones] POST error:', err.message);
     res.status(500).json({ message: 'Internal server error' });
@@ -156,13 +169,19 @@ router.put('/:id', isAuthenticated, async (req, res) => {
       }
     }
 
+    // Recalculate expected yield if area or crop type changed
+    const newCropType = crop_type ?? zone.crop_type;
+    const newAreaSize = area_size !== undefined ? parseFloat(area_size) : zone.area_size;
+    const updatedYield = Math.round(newAreaSize * getYieldPerAcre(newCropType));
+
     await dbRun(
-      'UPDATE zones SET name = ?, crop_type = ?, planting_date = ?, area_size = ?, status = ? WHERE id = ?',
+      'UPDATE zones SET name = ?, crop_type = ?, planting_date = ?, area_size = ?, status = ?, expected_yield_kg = ? WHERE id = ?',
       name ?? zone.name,
-      crop_type ?? zone.crop_type,
+      newCropType,
       planting_date ?? zone.planting_date,
-      area_size ?? zone.area_size,
+      newAreaSize,
       status ?? zone.status,
+      updatedYield,
       Number(id)
     );
 
