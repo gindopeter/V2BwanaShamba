@@ -433,13 +433,49 @@ export default function LiveScout() {
       .replace(/\n\n+/g, '. ')
       .replace(/\n/g, ' ')
       .trim();
-    const utter = new SpeechSynthesisUtterance(clean);
-    utter.lang = 'sw-TZ';
-    utter.rate = 1.0;
-    isAiSpeakingRef.current = true;
-    utter.onend = () => { isAiSpeakingRef.current = false; onEnd?.(); };
-    utter.onerror = () => { isAiSpeakingRef.current = false; onEnd?.(); };
-    window.speechSynthesis.speak(utter);
+
+    const doSpeak = () => {
+      const utter = new SpeechSynthesisUtterance(clean);
+
+      // Pick the best available voice: prefer Swahili, fall back to English, then any default
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        const swVoice = voices.find(v => v.lang.toLowerCase().startsWith('sw'));
+        const enVoice = voices.find(v => v.lang.startsWith('en-GB')) ||
+                        voices.find(v => v.lang.startsWith('en'));
+        const chosen = swVoice || enVoice || voices[0];
+        utter.voice = chosen;
+        utter.lang = chosen.lang;
+      }
+      // If voices array is still empty, browser will use system default — still speaks
+
+      utter.rate = 1.0;
+      utter.volume = 1.0;
+      isAiSpeakingRef.current = true;
+      utter.onend = () => { isAiSpeakingRef.current = false; onEnd?.(); };
+      utter.onerror = (e) => {
+        console.warn('[LiveVoice] Speech synthesis error:', (e as any).error);
+        isAiSpeakingRef.current = false;
+        onEnd?.();
+      };
+      window.speechSynthesis.speak(utter);
+    };
+
+    // Voices load asynchronously on first call — wait if not ready yet
+    if (window.speechSynthesis.getVoices().length > 0) {
+      doSpeak();
+    } else {
+      const handler = () => {
+        window.speechSynthesis.removeEventListener('voiceschanged', handler);
+        doSpeak();
+      };
+      window.speechSynthesis.addEventListener('voiceschanged', handler);
+      // Safety fallback — some browsers never fire voiceschanged
+      setTimeout(() => {
+        window.speechSynthesis.removeEventListener('voiceschanged', handler);
+        doSpeak();
+      }, 500);
+    }
   };
 
   const startLiveVoice = async () => {
@@ -462,10 +498,12 @@ export default function LiveScout() {
       if (!isLiveVoiceRef.current) return;
 
       const recognition = new SpeechRecognition();
+      // sw-TZ supports Swahili and English in Chrome; fall back to en-US if unsupported
       recognition.lang = 'sw-TZ';
       recognition.interimResults = false;
       recognition.maxAlternatives = 1;
       speechRecognitionRef.current = recognition;
+      let langFallback = false;
 
       let handled = false;
 
@@ -515,6 +553,21 @@ export default function LiveScout() {
           if (isLiveVoiceRef.current && !handled) setTimeout(listenAndRespond, 300);
           return;
         }
+        // If Swahili isn't supported, retry once with English
+        if ((event.error === 'language-not-supported' || event.error === 'network') && !langFallback) {
+          langFallback = true;
+          try { recognition.stop(); } catch {}
+          const fallbackRec = new SpeechRecognition();
+          fallbackRec.lang = 'en-US';
+          fallbackRec.interimResults = false;
+          fallbackRec.maxAlternatives = 1;
+          speechRecognitionRef.current = fallbackRec;
+          fallbackRec.onresult = recognition.onresult;
+          fallbackRec.onerror = () => { if (isLiveVoiceRef.current && !handled) setTimeout(listenAndRespond, 1000); };
+          fallbackRec.onend = () => {};
+          try { fallbackRec.start(); } catch {}
+          return;
+        }
         console.error('[LiveVoice] Recognition error:', event.error);
         if (isLiveVoiceRef.current && !handled) setTimeout(listenAndRespond, 1000);
       };
@@ -542,7 +595,7 @@ export default function LiveScout() {
     }
 
     try {
-      const res = await fetch('/api/voice-transcript', {
+      const res = await fetch('/api/chat/voice-transcript', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: voiceMessages })
