@@ -6,10 +6,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { setupLiveVoiceProxy } from './server/liveVoiceProxy.ts';
 
+import { GoogleGenAI } from '@google/genai';
 import { initDatabase, isPostgres, getSqliteDb, getPgPool, dbAll, dbGet } from './server/db.ts';
 import { isAuthenticated } from './server/middleware/auth.ts';
 import { TANZANIA_REGIONS } from './server/constants/regions.ts';
 import { TANZANIA_DISTRICT_COORDS } from './server/constants/district_coords.ts';
+import { getDaysToHarvest, getGrowthStage } from './server/constants/crops.ts';
 
 import authRoutes from './server/routes/auth.ts';
 import zoneRoutes from './server/routes/zones.ts';
@@ -207,32 +209,102 @@ async function startServer() {
       const userId = req.session.userId!;
       const language: string = req.body?.language || 'en';
 
-      const [userProfile, zones, tasks] = await Promise.all([
+      const [userProfile, zones] = await Promise.all([
         dbGet('SELECT first_name, region, district, farm_size_acres FROM users WHERE id = ?', userId),
-        dbAll('SELECT name, crop_type, area_size, current_growth_day FROM zones WHERE user_id = ? AND status = ?', userId, 'Active'),
-        dbAll("SELECT task_type, scheduled_time, status FROM tasks WHERE zone_id IN (SELECT id FROM zones WHERE user_id = ?) AND status = 'Pending' ORDER BY scheduled_time ASC LIMIT 5", userId),
+        dbAll(
+          'SELECT id, name, crop_type, area_size, planting_date FROM zones WHERE user_id = ? AND status = ?',
+          userId, 'Active'
+        ),
       ]);
 
-      const farmContext = {
-        farmer: userProfile?.first_name || 'Farmer',
-        region: userProfile?.region || 'Tanzania',
-        farmSize: userProfile?.farm_size_acres || 'Unknown',
-        zones: zones.map((z: any) => `${z.name} (${z.crop_type}, day ${z.current_growth_day}, ${z.area_size} acres)`).join('; ') || 'No active zones',
-        pendingTasks: tasks.map((t: any) => `${t.task_type} on ${new Date(t.scheduled_time).toLocaleDateString()}`).join('; ') || 'No pending tasks',
-      };
+      if (!zones || zones.length === 0) {
+        return res.json({ recommendations: [] });
+      }
+
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('en-GB', {
+        timeZone: 'Africa/Dar_es_Salaam',
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+      });
+
+      // Compute precise growth age and stage for each zone
+      const zoneDetails = zones.map((z: any) => {
+        const planted = new Date(z.planting_date);
+        const ageDay  = Math.max(1, Math.ceil((now.getTime() - planted.getTime()) / 86400000));
+        const totalDays = getDaysToHarvest(z.crop_type);
+        const daysLeft  = Math.max(0, totalDays - ageDay);
+        const stage     = getGrowthStage(ageDay, totalDays);
+        return { name: z.name, crop: z.crop_type, ageDay, totalDays, daysLeft, stage, area: z.area_size };
+      });
+
+      const farmer   = userProfile?.first_name || 'Farmer';
+      const location = [
+        userProfile?.district ? `${userProfile.district} District` : null,
+        userProfile?.region   ? `${userProfile.region} Region`     : null,
+        'Tanzania',
+      ].filter(Boolean).join(', ');
+      const farmSize = userProfile?.farm_size_acres || 'unknown';
+
+      const zoneLines = zoneDetails.map(z =>
+        `  • ${z.name} — ${z.crop}, Day ${z.ageDay} of ${z.totalDays} (${z.stage} stage, ${z.daysLeft} days to harvest, ${z.area} acres)`
+      ).join('\n');
 
       const isSwahili = language === 'sw';
-      const prompt = isSwahili
-        ? `Wewe ni mshauri wa kilimo bora wa Tanzania. Mkulima ${farmContext.farmer} ana shamba la ${farmContext.farmSize} ekari katika ${farmContext.region}. Maeneo yenye mazao: ${farmContext.zones}. Kazi zinazosubiri: ${farmContext.pendingTasks}.\n\nToa mapendekezo 3-4 ya vitendo vya haraka kwa mkulima huyu. Jibu kwa JSON tu:\n{"recommendations": [{"priority": "high|medium|low", "icon": "emoji", "title": "kichwa kifupi", "description": "maelezo fupi"}]}`
-        : `You are a top agricultural advisor for Tanzania. Farmer ${farmContext.farmer} has a ${farmContext.farmSize}-acre farm in ${farmContext.region}. Active zones: ${farmContext.zones}. Pending tasks: ${farmContext.pendingTasks}.\n\nProvide 3-4 specific, actionable recommendations. Reply ONLY with JSON:\n{"recommendations": [{"priority": "high|medium|low", "icon": "emoji", "title": "short title", "description": "brief description"}]}`;
 
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
-      const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-      const model = genai.getGenerativeModel({ model: 'gemini-2.0-flash' });
+      const enPrompt = `You are a precision crop advisor for smallholder farms in Tanzania. Today is ${dateStr}.
 
-      const result = await model.generateContent(prompt);
-      const text = result.response.text().replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      const parsed = JSON.parse(text);
+FARM: ${farmer}, ${farmSize} acres, ${location}
+
+ACTIVE ZONES — current growth day is exact:
+${zoneLines}
+
+CROP STAGE KNOWLEDGE (apply this per zone based on their exact stage):
+• SEEDLING (0–25% of cycle): Apply starter fertilizer (DAP or NPK 17-17-17 at 30 kg/acre). Scout for cutworms, aphids, damping-off. Maintain moisture, avoid waterlogging. Thin overcrowded seedlings.
+• VEGETATIVE (25–50%): Top-dress with CAN (60–80 kg/acre) or Urea for leafy growth. Weekly pest scouting (caterpillars, whitefly, spider mites, early blight). Critical weed control window.
+• FLOWERING (50–75%): Switch to P/K fertilizer (MOP 40 kg/acre + TSP). Do NOT over-irrigate. Watch for flower drop, botrytis, powdery mildew. For tomato/pepper: scout for Tuta absoluta and bacterial wilt.
+• NEAR HARVEST (75–100%): Stop all fertigation 14 days before harvest. Assess quality (brix, firmness, size). Plan market logistics and labour for harvest. Watch for post-harvest diseases.
+
+TASK: Generate ${Math.min(6, Math.max(3, zoneDetails.length * 2))} specific, immediately-actionable recommendations.
+
+RULES (strictly follow):
+1. Every recommendation MUST reference the specific zone by name (e.g. "Kitalu A – Tomato").
+2. Be precise: name the exact fertilizer, pest, disease, or technique — never generic advice.
+3. Priority must reflect urgency: HIGH = critical timing or active threat; MEDIUM = should act this week; LOW = monitoring or planning.
+4. Seedling and Flowering zones take priority — mistakes in these stages cost the whole crop.
+5. Cover EVERY active zone — do not skip any.
+
+Reply ONLY with valid JSON, no markdown, no code fences:
+{"recommendations":[{"priority":"high|medium|low","icon":"emoji","title":"Zone – Action","description":"Specific detail with product/dose/timing"}]}`;
+
+      const swPrompt = `Wewe ni mshauri wa kilimo cha usahihi kwa wakulima wadogo Tanzania. Leo ni ${dateStr}.
+
+SHAMBA: ${farmer}, ekari ${farmSize}, ${location}
+
+MAENEO YENYE MAZAO — siku ya ukuaji ni sahihi:
+${zoneDetails.map(z => `  • ${z.name} — ${z.crop}, Siku ${z.ageDay} kati ya ${z.totalDays} (Hatua ya ${z.stage}, siku ${z.daysLeft} hadi mavuno, ekari ${z.area})`).join('\n')}
+
+MAARIFA YA HATUA ZA UKUAJI:
+• MCHE (0–25%): Weka mbolea ya kuanzia (DAP au NPK 17-17-17, kilo 30/ekari). Angalia wadudu wa udongo, vidukari, na ugonjwa wa kuoza. Weka unyevu, epuka maji mengi.
+• UKUAJI (25–50%): Weka CAN (kilo 60–80/ekari). Angalia wadudu kila wiki. Palilia magugu.
+• MAUA (50–75%): Badilisha hadi mbolea ya P/K (MOP kilo 40 + TSP). Usimwagilie sana. Angalia kuanguka kwa maua, ugonjwa wa ukungu.
+• KARIBU NA MAVUNO (75–100%): Acha mbolea siku 14 kabla ya mavuno. Panga soko na wafanyakazi wa kuvuna.
+
+KAZI: Toa mapendekezo ${Math.min(6, Math.max(3, zoneDetails.length * 2))} maalum kwa kila eneo.
+
+KANUNI: Taja jina la eneo, toa ushauri maalum (dawa/mbolea/kipimo), weka kipaumbele sahihi.
+
+Jibu kwa JSON tu, bila markdown:
+{"recommendations":[{"priority":"high|medium|low","icon":"emoji","title":"Eneo – Hatua","description":"Maelezo maalum na bidhaa/kipimo/muda"}]}`;
+
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const result = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: isSwahili ? swPrompt : enPrompt }] }],
+      });
+
+      const raw = (result.text || '{}')
+        .replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const parsed = JSON.parse(raw);
 
       res.json({ recommendations: parsed.recommendations || [] });
     } catch (err: any) {

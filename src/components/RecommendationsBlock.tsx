@@ -96,16 +96,27 @@ export default function RecommendationsBlock({ lang = 'en' }: { lang?: Language 
           <div className="space-y-3">
             {recommendations.map((rec, i) => {
               const style = PRIORITY_STYLES[rec.priority] || PRIORITY_STYLES.low;
+              // Split "Zone – Action" titles into zone tag + action label
+              const dashIdx = rec.title.indexOf(' – ');
+              const zoneTag   = dashIdx !== -1 ? rec.title.slice(0, dashIdx) : null;
+              const actionLabel = dashIdx !== -1 ? rec.title.slice(dashIdx + 3) : rec.title;
               return (
                 <div key={i} className="flex gap-3 p-3 rounded-xl bg-[#f9f6f1] border border-[#002c11]/[0.04]">
                   <div className={`w-1 rounded-full shrink-0 ${style.bar}`}></div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2 mb-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base">{rec.icon}</span>
-                        <p className="text-sm font-black text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
-                          {rec.title}
-                        </p>
+                      <div className="flex items-start gap-2">
+                        <span className="text-base leading-tight">{rec.icon}</span>
+                        <div>
+                          {zoneTag && (
+                            <span className="inline-block text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#035925]/10 text-[#035925] mb-0.5 mr-1">
+                              {zoneTag}
+                            </span>
+                          )}
+                          <p className="text-sm font-black text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
+                            {actionLabel}
+                          </p>
+                        </div>
                       </div>
                       <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${style.badge}`}>
                         {style.label[lang]}
