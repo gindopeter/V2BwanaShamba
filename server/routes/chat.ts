@@ -485,6 +485,69 @@ Be concise and actionable.`;
   }
 });
 
+// ─── PCM → WAV helper ─────────────────────────────────────────────────────────
+function pcmToWav(pcm: Buffer, sampleRate = 24000, channels = 1, bitDepth = 16): Buffer {
+  const byteRate = sampleRate * channels * (bitDepth / 8);
+  const blockAlign = channels * (bitDepth / 8);
+  const buf = Buffer.alloc(44 + pcm.length);
+  buf.write('RIFF', 0);
+  buf.writeUInt32LE(36 + pcm.length, 4);
+  buf.write('WAVE', 8);
+  buf.write('fmt ', 12);
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(1, 20);
+  buf.writeUInt16LE(channels, 22);
+  buf.writeUInt32LE(sampleRate, 24);
+  buf.writeUInt32LE(byteRate, 28);
+  buf.writeUInt16LE(blockAlign, 32);
+  buf.writeUInt16LE(bitDepth, 34);
+  buf.write('data', 36);
+  buf.writeUInt32LE(pcm.length, 40);
+  pcm.copy(buf, 44);
+  return buf;
+}
+
+// ─── POST /api/chat/tts ────────────────────────────────────────────────────────
+// Converts text to natural speech using Gemini 2.5 TTS and returns WAV audio.
+router.post('/tts', isAuthenticated, async (req, res) => {
+  const { text, voice = 'Aoede' } = req.body;
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    return res.status(400).json({ error: 'text is required' });
+  }
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'Gemini API key not configured' });
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const result = await (ai.models as any).generateContent({
+      model: 'gemini-2.5-flash-preview-tts',
+      contents: [{ role: 'user', parts: [{ text: text.trim() }] }],
+      config: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } }
+        }
+      }
+    });
+
+    const inlineData = result.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+    if (!inlineData?.data) {
+      console.error('[tts] No audio data in Gemini response');
+      return res.status(500).json({ error: 'No audio returned from TTS' });
+    }
+
+    const pcm = Buffer.from(inlineData.data, 'base64');
+    const wav = pcmToWav(pcm);
+    res.setHeader('Content-Type', 'audio/wav');
+    res.setHeader('Content-Length', wav.length);
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(wav);
+  } catch (err: any) {
+    console.error('[tts] Error:', err.message);
+    res.status(500).json({ error: 'TTS generation failed' });
+  }
+});
+
 // ─── POST /api/chat/voice-transcript ──────────────────────────────────────────
 router.post('/voice-transcript', isAuthenticated, async (req, res) => {
   try {

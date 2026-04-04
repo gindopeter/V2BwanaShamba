@@ -421,10 +421,12 @@ export default function LiveScout() {
   const handleSendTextRef = useRef(handleSendText);
   handleSendTextRef.current = handleSendText;
 
-  const speakVoiceText = (text: string, onEnd?: () => void) => {
-    if (!window.speechSynthesis) { onEnd?.(); return; }
-    window.speechSynthesis.cancel();
-    const clean = text
+  // Shared AudioContext — reuse across calls to avoid hitting browser limits
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+  const cleanSpeakText = (text: string) =>
+    text
       .replace(/\*\*([^*]+)\*\*/g, '$1')
       .replace(/\*([^*]+)\*/g, '$1')
       .replace(/`([^`]+)`/g, '$1')
@@ -434,48 +436,68 @@ export default function LiveScout() {
       .replace(/\n/g, ' ')
       .trim();
 
-    const doSpeak = () => {
-      const utter = new SpeechSynthesisUtterance(clean);
-
-      // Pick the best available voice: prefer Swahili, fall back to English, then any default
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length > 0) {
-        const swVoice = voices.find(v => v.lang.toLowerCase().startsWith('sw'));
-        const enVoice = voices.find(v => v.lang.startsWith('en-GB')) ||
-                        voices.find(v => v.lang.startsWith('en'));
-        const chosen = swVoice || enVoice || voices[0];
-        utter.voice = chosen;
-        utter.lang = chosen.lang;
-      }
-      // If voices array is still empty, browser will use system default — still speaks
-
-      utter.rate = 1.0;
-      utter.volume = 1.0;
-      isAiSpeakingRef.current = true;
-      utter.onend = () => { isAiSpeakingRef.current = false; onEnd?.(); };
-      utter.onerror = (e) => {
-        console.warn('[LiveVoice] Speech synthesis error:', (e as any).error);
-        isAiSpeakingRef.current = false;
-        onEnd?.();
-      };
-      window.speechSynthesis.speak(utter);
-    };
-
-    // Voices load asynchronously on first call — wait if not ready yet
-    if (window.speechSynthesis.getVoices().length > 0) {
-      doSpeak();
-    } else {
-      const handler = () => {
-        window.speechSynthesis.removeEventListener('voiceschanged', handler);
-        doSpeak();
-      };
-      window.speechSynthesis.addEventListener('voiceschanged', handler);
-      // Safety fallback — some browsers never fire voiceschanged
-      setTimeout(() => {
-        window.speechSynthesis.removeEventListener('voiceschanged', handler);
-        doSpeak();
-      }, 500);
+  // Fallback: browser SpeechSynthesis (robotic but universal)
+  const speakWithBrowser = (clean: string, onEnd?: () => void) => {
+    if (!window.speechSynthesis) { isAiSpeakingRef.current = false; onEnd?.(); return; }
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(clean);
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      const chosen = voices.find(v => v.lang.toLowerCase().startsWith('sw')) ||
+                     voices.find(v => v.lang.startsWith('en')) || voices[0];
+      utter.voice = chosen;
+      utter.lang = chosen.lang;
     }
+    utter.rate = 1.0;
+    utter.volume = 1.0;
+    utter.onend = () => { isAiSpeakingRef.current = false; onEnd?.(); };
+    utter.onerror = () => { isAiSpeakingRef.current = false; onEnd?.(); };
+    window.speechSynthesis.speak(utter);
+  };
+
+  const speakVoiceText = (text: string, onEnd?: () => void) => {
+    const clean = cleanSpeakText(text);
+    if (!clean) { onEnd?.(); return; }
+
+    // Stop any currently playing audio
+    try { currentSourceRef.current?.stop(); } catch {}
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+
+    isAiSpeakingRef.current = true;
+
+    // Use Gemini TTS for natural, human-like speech
+    fetch('/api/chat/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: clean, voice: 'Aoede' })
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
+        return res.arrayBuffer();
+      })
+      .then(arrayBuf => {
+        // Reuse or create AudioContext
+        if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+          audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        }
+        const ctx = audioCtxRef.current;
+        if (ctx.state === 'suspended') ctx.resume();
+        return ctx.decodeAudioData(arrayBuf).then(decoded => {
+          const source = ctx.createBufferSource();
+          source.buffer = decoded;
+          source.connect(ctx.destination);
+          currentSourceRef.current = source;
+          source.onended = () => {
+            isAiSpeakingRef.current = false;
+            onEnd?.();
+          };
+          source.start(0);
+        });
+      })
+      .catch(err => {
+        console.warn('[LiveVoice] Gemini TTS failed, falling back to browser TTS:', err.message);
+        speakWithBrowser(clean, onEnd);
+      });
   };
 
   const startLiveVoice = async () => {
