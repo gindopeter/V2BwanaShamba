@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { GoogleGenAI } from '@google/genai';
 import { dbAll, dbGet, dbRun } from '../db.ts';
 import { isAuthenticated } from '../middleware/auth.ts';
-import { getFarmContext, chatViaGeminiDirect } from '../services/gemini.ts';
+import { getFarmContext, chatViaGeminiDirect, createEphemeralToken } from '../services/gemini.ts';
 import { chatViaADK, createADKStreamFetch } from '../services/adk.ts';
 import { issueLiveToken } from '../liveVoiceProxy.ts';
 
@@ -14,6 +14,20 @@ const router = Router();
 router.get('/live-voice-token', isAuthenticated, (req, res) => {
   const token = issueLiveToken(req.session.userId!);
   res.json({ token });
+});
+
+// ─── GET /api/chat/gemini-live-token ──────────────────────────────────────────
+// Returns a short-lived Gemini ephemeral token (~60s) scoped to the Live API
+// for browser voice/camera sessions. Replaces any old /api/gemini-session
+// endpoint that would have exposed the raw API key to the client.
+router.get('/gemini-live-token', isAuthenticated, async (req, res) => {
+  try {
+    const token = await createEphemeralToken();
+    res.json({ token });
+  } catch (err: any) {
+    console.error('[gemini-live-token] Error:', err.message);
+    res.status(500).json({ error: 'Could not create live session token' });
+  }
 });
 
 // ─── GET /api/conversations ────────────────────────────────────────────────────
