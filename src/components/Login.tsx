@@ -98,7 +98,7 @@ export default function Login({ onLogin }: LoginProps) {
       const res = await fetch('/api/chat/guest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMsg, language: lang }),
+        body: JSON.stringify({ message: userMsg, language: lang, history: guestMessages }),
       });
       const data = await res.json();
       if (res.status === 429) {

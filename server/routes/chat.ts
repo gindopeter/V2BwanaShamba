@@ -74,7 +74,7 @@ router.get('/conversations/:id/messages', isAuthenticated, async (req, res) => {
 // ─── POST /api/chat/guest ──────────────────────────────────────────────────────
 router.post('/guest', async (req, res) => {
   try {
-    const { message, language } = req.body;
+    const { message, language, history } = req.body;
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return res.status(400).json({ error: 'Message is required' });
@@ -135,9 +135,18 @@ You help farmers with questions about crops, soil, pests, diseases, fertilizers,
 Be concise, practical, and friendly.
 Current Date: ${new Date().toISOString().split('T')[0]}`;
 
+    // Build conversation history so the AI maintains context across turns.
+    // `history` is the array of prior messages sent from the browser.
+    const priorTurns = Array.isArray(history)
+      ? history.map((msg: { role: 'user' | 'ai'; text: string }) => ({
+          role: msg.role === 'ai' ? 'model' : 'user',
+          parts: [{ text: msg.text }],
+        }))
+      : [];
+
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: message }] }],
+      contents: [...priorTurns, { role: 'user', parts: [{ text: message }] }],
       config: { systemInstruction },
     });
 
