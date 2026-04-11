@@ -42,8 +42,7 @@ async function handleSession(ws: WebSocket, userId: number) {
     return;
   }
 
-  // v1alpha is required — bidiGenerateContent (Live API) is not available on v1beta
-  const ai = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: 'v1alpha' } });
+  const ai = new GoogleGenAI({ apiKey });
   let geminiSession: any = null;
 
   const send = (payload: object) => {
@@ -55,7 +54,7 @@ async function handleSession(ws: WebSocket, userId: number) {
   try {
     console.log('[LiveProxy] Connecting to Gemini Live API...');
     geminiSession = await ai.live.connect({
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-live-2.5-flash-preview',
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } } },
