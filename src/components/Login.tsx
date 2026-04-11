@@ -126,8 +126,8 @@ export default function Login({ onLogin }: LoginProps) {
   );
 
   const stats = [
-    { number: '24/7', unit: '', label: t(lang, 'aiSupport') },
-    { number: '∞', unit: '', label: t(lang, 'aiMonitoring') },
+    { number: t(lang, 'longTerm'), unit: '', label: t(lang, 'aiSupport') },
+    { number: t(lang, 'longTerm'), unit: '', label: t(lang, 'aiMonitoring') },
   ];
 
   const renderLandingContent = (dark: boolean) => (
