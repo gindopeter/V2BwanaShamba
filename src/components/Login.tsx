@@ -125,32 +125,8 @@ export default function Login({ onLogin }: LoginProps) {
     </svg>
   );
 
-  const stats = [
-    { number: t(lang, 'longTerm'), unit: '', label: t(lang, 'aiSupport') },
-    { number: t(lang, 'longTerm'), unit: '', label: t(lang, 'aiMonitoring') },
-  ];
-
   const renderLandingContent = (dark: boolean) => (
     <>
-      <div
-        className="flex gap-6 border-t border-white/10 pt-5 mb-4"
-        style={{ animation: mounted ? 'fadeUp 0.8s ease-out 0.6s forwards' : 'none' }}
-      >
-        {stats.map((stat, i) => (
-          <div
-            key={stat.label}
-            className="flex-1"
-            style={{ animation: mounted ? `numberCount 0.6s ease-out ${0.8 + i * 0.15}s forwards` : 'none' }}
-          >
-            <div className="flex items-baseline gap-1 mb-0.5">
-              <span className="text-2xl font-black text-white" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>{stat.number}</span>
-              {stat.unit && <span className="text-xs font-bold text-[#fc8e44]">{stat.unit}</span>}
-            </div>
-            <p className="text-[10px] text-white/40 font-medium uppercase tracking-wider">{stat.label}</p>
-          </div>
-        ))}
-      </div>
-
       <div
         className="space-y-2"
         style={{ animation: mounted ? 'fadeUp 0.8s ease-out 0.9s forwards' : 'none' }}
