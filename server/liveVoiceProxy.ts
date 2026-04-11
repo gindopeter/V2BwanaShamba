@@ -54,7 +54,7 @@ async function handleSession(ws: WebSocket, userId: number) {
   try {
     console.log('[LiveProxy] Connecting to Gemini Live API...');
     geminiSession = await ai.live.connect({
-      model: 'gemini-live-2.5-flash-preview',
+      model: 'gemini-2.0-flash-live-preview-04-09',
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } } },
