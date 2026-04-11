@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { setupLiveVoiceProxy } from './server/liveVoiceProxy.ts';
 
 import { GoogleGenAI } from '@google/genai';
+import rateLimit from 'express-rate-limit';
 import { initDatabase, isPostgres, getSqliteDb, getPgPool, dbAll, dbGet } from './server/db.ts';
 import { isAuthenticated } from './server/middleware/auth.ts';
 import { TANZANIA_REGIONS } from './server/constants/regions.ts';
@@ -112,6 +113,20 @@ async function startServer() {
   app.use('/api/auth', authRoutes);
   app.use('/api/zones', zoneRoutes);
   app.use('/api/tasks', taskRoutes);
+
+  // Per-user rate limit on AI endpoints — prevents a single account draining Gemini quota.
+  // All routes under /api/chat and /api/recommendations are auth-gated, so userId is always set.
+  const aiRateLimit = rateLimit({
+    windowMs: 15 * 60 * 1000,         // 15-minute window
+    max: 60,                            // 60 AI requests per window per user
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => String((req.session as any)?.userId ?? 'anon'),
+    validate: { keyGeneratorIpFallback: false },  // userId is not an IP; suppress IPv6 warning
+    message: { error: 'Too many requests. Please wait a few minutes before continuing.' },
+  });
+  app.use('/api/chat', aiRateLimit);
+  app.use('/api/recommendations', aiRateLimit);
   app.use('/api/chat', chatRoutes);
 
   app.post('/api/engine/run-checks', isAuthenticated, async (req, res) => {

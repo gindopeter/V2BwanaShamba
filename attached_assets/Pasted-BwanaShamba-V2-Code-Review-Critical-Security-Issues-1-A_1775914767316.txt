@@ -1,0 +1,61 @@
+BwanaShamba V2 — Code Review
+🔴 Critical Security Issues
+1. API key exposed to clients (/api/gemini-session)
+This is the most serious issue in the codebase:
+tsapp.get("/api/gemini-session", isAuthenticated, (req, res) => {
+  res.json({ apiKey }); // Your GEMINI_API_KEY sent to browser
+});
+Any authenticated user can open DevTools, call this endpoint, and harvest your Gemini API key. If this is used by the Live Voice Scout to call Gemini from the browser directly, the fix is to proxy those requests through the server instead — never give a raw API key to a client.
+2. Zone ownership not enforced on mutation routes
+PUT /api/zones/:id, DELETE /api/zones/:id, PATCH /api/zones/:id/yield, and POST /api/zones/:id/irrigation all check that the zone exists but never verify it belongs to the requesting user. Any authenticated user can modify or delete anyone else's zones. Compare against how GET /api/zones correctly scopes by user_id.
+Fix:
+tsconst zone = await dbGet('SELECT * FROM zones WHERE id = ? AND user_id = ?', id, userId);
+if (!zone) return res.status(404).json({ message: "Zone not found" });
+3. Hardcoded fallback secrets
+tssecret: process.env.SESSION_SECRET || 'bwanashamba-farm-secret-key-change-in-production'
+const ADK_TOKEN = process.env.ADK_INTERNAL_TOKEN || 'bwanashamba-internal-dev-token';
+These fallbacks mean if an env var is accidentally unset in production, the app silently runs with a known public secret. Better to throw on startup if the variable is missing:
+tsif (!process.env.SESSION_SECRET) throw new Error("SESSION_SECRET is required");
+4. No rate limiting on authenticated AI endpoints
+The guest endpoint has a 5-message/24h IP limit, but authenticated users have unlimited access to /api/chat and /api/analyze-crop. A single user could drain your entire Gemini quota. Add per-user limits or at minimum a request-rate middleware.
+
+🟡 Architecture & Design Issues
+5. server.ts is a 1040-line monolith
+Auth, zones, tasks, conversations, AI chat, voice transcripts, weather fetching, the irrigation engine, and static file serving all live in one file. As V2 grows this becomes very hard to maintain. A natural split would be:
+server/
+  routes/auth.ts
+  routes/zones.ts
+  routes/chat.ts
+  routes/engine.ts
+  middleware/auth.ts
+  services/gemini.ts
+  services/weather.ts
+6. cropDaysMap duplicated
+The same { 'Tomato': 120, 'Onion': 150, ... } map is defined identically in both getFarmContext() and GET /api/zones. Extract it as a shared module-level constant.
+7. getFarmContext() is not user-scoped
+tsconst zones = await dbAll('SELECT * FROM zones');
+This fetches all users' zones and injects them into the AI system prompt. In a single-user setup this doesn't matter, but as you add more farmers this becomes a data privacy issue and the context window will bloat. Filter by the requesting user's ID.
+8. better-sqlite3 in devDependencies
+SQLite is used as the local/fallback database at runtime. If someone runs npm install --production, SQLite mode will break because better-sqlite3 and better-sqlite3-session-store won't be installed. Move them to dependencies.
+9. Non-deterministic yield prediction
+tspredicted = predicted * (0.9 + Math.random() * 0.2);
+This means every page refresh returns a different predicted yield number. For a data-driven app this erodes trust. Either calculate deterministically (use planting date + growth day as a seed) or store the prediction on zone creation.
+10. Manual PostgreSQL parameter indexing
+The PUT /api/auth/users/:id handler manually tracks $1, $2... parameter indexes with an idx counter. This is fragile — adding or reordering a field can silently break the query. A small query-builder helper or an ORM would make this much safer.
+
+🟡 Minor Issues
+11. package.json name is "react-example" — rename to "bwanashamba".
+12. express.json({ limit: '100mb' }) — This is very permissive. A malicious request with a 100MB JSON body could exhaust server memory on Cloud Run. Cap it at a more sensible limit like 10mb for API routes, with a separate higher limit only for the image analysis endpoints.
+13. SELECT * throughout — Many queries select all columns, including password_hash. While the routes generally return only what they intend, one accidental res.json(user) instead of a picked object would leak hashes. Explicit column lists are safer.
+14. No input validation library — Validation is scattered inline (checking !email, password.length < 6, etc.) with inconsistent coverage across routes. A library like zod would let you define a schema per endpoint and validate/type-check in one place.
+15. isAuthenticated hits the DB on every request — It queries SELECT is_active FROM users for every authenticated request. Storing isActive in the session (and refreshing it on login) would cut the overhead significantly.
+
+✅ What's Done Well
+
+Session fixation prevention: req.session.regenerate() on login is exactly right.
+Soft deletes for users: Appending _deleted_ to the email rather than hard-deleting is a clean pattern.
+ADK → Gemini fallback: The graceful degradation when the ADK service is unavailable is well-implemented in both streaming and non-streaming paths.
+Environment-aware DB layer: The isPostgres switch in server/db.ts and the matching session store selection is clean.
+Guest rate limiting: IP-based limiting with a rolling 24h window is a sensible approach for the public demo.
+bcrypt password hashing: Correct usage with cost factor 10.
+sameSite: 'lax' + httpOnly: Session cookie flags are set correctly.

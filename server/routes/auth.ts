@@ -299,7 +299,10 @@ router.put('/users/:id', isAdmin, async (req, res) => {
     const { id } = req.params;
     const { email, first_name, last_name, role, password } = req.body;
 
-    const user = await dbGet('SELECT * FROM users WHERE id = ?', Number(id));
+    const user = await dbGet(
+      'SELECT id, email, first_name, last_name, role, is_active, created_at FROM users WHERE id = ?',
+      Number(id)
+    );
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     if (email && email !== user.email) {
