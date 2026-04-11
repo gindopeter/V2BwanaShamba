@@ -214,36 +214,3 @@ Current Date/Time: ${new Date().toLocaleString('en-US', { timeZone: 'Africa/Dar_
   return response.text || 'I could not generate a response.';
 }
 
-/**
- * Returns a short-lived ephemeral token for use by the frontend Gemini Live API
- * (voice/camera sessions). This replaces any use of /api/gemini-session that
- * would have exposed the raw API key directly.
- *
- * The ephemeral token is valid for ~60 seconds and scoped to the Live model only.
- * Even if intercepted, it cannot be used for anything else and expires immediately.
- */
-export async function createEphemeralToken(): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('Gemini API key not configured');
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/ephemeralTokens?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'models/gemini-2.5-flash',
-        config: { response_modalities: ['AUDIO'] },
-        ttl: '60s',
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Failed to create ephemeral token: ${response.status} ${err}`);
-  }
-
-  const data = (await response.json()) as any;
-  return data.token as string;
-}

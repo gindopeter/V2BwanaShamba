@@ -501,108 +501,196 @@ export default function LiveScout() {
   };
 
   const startLiveVoice = async () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert('Speech recognition is not supported in your browser. Please use Chrome or Edge.');
-      return;
-    }
-
     setIsLiveVoice(true);
     isLiveVoiceRef.current = true;
     sessionReadyRef.current = false;
     voiceMessagesRef.current = [];
+    setMessages(prev => [...prev, { role: 'system', text: 'Connecting to live voice...' }]);
 
-    setMessages(prev => [...prev, { role: 'system', text: 'Live voice session started. Speak to your AI assistant in English or Kiswahili.' }]);
+    // 1. Get a short-lived one-time token from the server
+    let token: string;
+    try {
+      const res = await fetch('/api/chat/live-voice-token');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      token = (await res.json()).token;
+    } catch (err: any) {
+      console.error('[LiveVoice] Token fetch failed:', err);
+      setMessages(prev => [...prev, { role: 'system', text: `Could not start live voice: ${err.message}` }]);
+      setIsLiveVoice(false);
+      isLiveVoiceRef.current = false;
+      return;
+    }
 
-    let voiceConvId: number | null = activeConversationId;
+    // 2. Open WebSocket to the server-side Gemini Live proxy (API key never reaches browser)
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${proto}://${window.location.host}/api/live-voice-ws?token=${token}`);
+    liveWsRef.current = ws;
 
-    const listenAndRespond = () => {
-      if (!isLiveVoiceRef.current) return;
+    // 3. Schedule 24 kHz PCM chunks for gapless playback
+    const playAudioChunk = (base64Data: string) => {
+      let ctx = audioContextRef.current;
+      if (!ctx || ctx.state === 'closed') {
+        ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioContextRef.current = ctx;
+        nextPlayTimeRef.current = 0;
+      }
+      if (ctx.state === 'suspended') ctx.resume();
+      const float32 = base64ToFloat32(base64Data);
+      // Gemini Live returns 24 kHz mono PCM; browser resamples as needed
+      const buffer = ctx.createBuffer(1, float32.length, 24000);
+      buffer.copyToChannel(float32, 0);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      activeSourcesRef.current.push(source);
+      source.onended = () => { activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== source); };
+      const now = ctx.currentTime;
+      const startAt = Math.max(now + 0.04, nextPlayTimeRef.current);
+      source.start(startAt);
+      nextPlayTimeRef.current = startAt + buffer.duration;
+    };
 
-      const recognition = new SpeechRecognition();
-      // sw-TZ supports Swahili and English in Chrome; fall back to en-US if unsupported
-      recognition.lang = 'sw-TZ';
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
-      speechRecognitionRef.current = recognition;
-      let langFallback = false;
+    // 4. Capture mic and stream 16 kHz PCM to proxy
+    const startMicCapture = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        audioStreamRef.current = stream;
 
-      let handled = false;
-
-      recognition.onresult = async (event: any) => {
-        const transcript = event.results[0]?.[0]?.transcript?.trim();
-        if (!transcript || !isLiveVoiceRef.current) return;
-        handled = true;
-        try { recognition.stop(); } catch {}
-
-        setMessages(prev => [...prev, { role: 'user', text: transcript }]);
-        voiceMessagesRef.current.push({ role: 'user', text: transcript });
-
-        try {
-          const chatRes = await fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: transcript, conversationId: voiceConvId, stream: false })
-          });
-          if (!chatRes.ok) throw new Error(`Server ${chatRes.status}`);
-          const data = await chatRes.json();
-          if (data.conversationId) {
-            voiceConvId = data.conversationId;
-            setActiveConversationId(data.conversationId);
-          }
-          const reply: string = data.reply || data.message || '';
-          if (reply && isLiveVoiceRef.current) {
-            setMessages(prev => [...prev, { role: 'ai', text: reply }]);
-            voiceMessagesRef.current.push({ role: 'ai', text: reply });
-            loadConversations();
-            speakVoiceText(reply, () => {
-              if (isLiveVoiceRef.current) setTimeout(listenAndRespond, 400);
-            });
-          } else if (isLiveVoiceRef.current) {
-            listenAndRespond();
-          }
-        } catch (err: any) {
-          console.error('[LiveVoice] Chat error:', err);
-          if (isLiveVoiceRef.current) {
-            setMessages(prev => [...prev, { role: 'system', text: `Error: ${err.message}` }]);
-            setTimeout(listenAndRespond, 1500);
-          }
+        let ctx = audioContextRef.current;
+        if (!ctx || ctx.state === 'closed') {
+          ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          audioContextRef.current = ctx;
+          nextPlayTimeRef.current = 0;
         }
-      };
+        if (ctx.state === 'suspended') ctx.resume();
 
-      recognition.onerror = (event: any) => {
-        if (event.error === 'no-speech' || event.error === 'aborted') {
-          if (isLiveVoiceRef.current && !handled) setTimeout(listenAndRespond, 300);
-          return;
-        }
-        // If Swahili isn't supported, retry once with English
-        if ((event.error === 'language-not-supported' || event.error === 'network') && !langFallback) {
-          langFallback = true;
-          try { recognition.stop(); } catch {}
-          const fallbackRec = new SpeechRecognition();
-          fallbackRec.lang = 'en-US';
-          fallbackRec.interimResults = false;
-          fallbackRec.maxAlternatives = 1;
-          speechRecognitionRef.current = fallbackRec;
-          fallbackRec.onresult = recognition.onresult;
-          fallbackRec.onerror = () => { if (isLiveVoiceRef.current && !handled) setTimeout(listenAndRespond, 1000); };
-          fallbackRec.onend = () => {};
-          try { fallbackRec.start(); } catch {}
-          return;
-        }
-        console.error('[LiveVoice] Recognition error:', event.error);
-        if (isLiveVoiceRef.current && !handled) setTimeout(listenAndRespond, 1000);
-      };
+        const micSource = ctx.createMediaStreamSource(stream);
+        const processor = ctx.createScriptProcessor(4096, 1, 1);
+        processorRef.current = processor;
 
-      recognition.onend = () => {};
+        // Muted gain keeps the graph active without feeding mic back to speakers
+        const muteGain = ctx.createGain();
+        muteGain.gain.value = 0;
 
-      try { recognition.start(); } catch (err) {
-        console.error('[LiveVoice] Could not start recognition:', err);
-        if (isLiveVoiceRef.current) setTimeout(listenAndRespond, 1000);
+        processor.onaudioprocess = (e) => {
+          if (!isLiveVoiceRef.current || !sessionReadyRef.current) return;
+          if (isAiSpeakingRef.current) return; // don't send while AI is speaking
+          const wsConn = liveWsRef.current;
+          if (!wsConn || wsConn.readyState !== WebSocket.OPEN) return;
+          const raw = e.inputBuffer.getChannelData(0);
+          const pcm16k = downsample(raw, ctx!.sampleRate, 16000);
+          wsConn.send(JSON.stringify({ type: 'audio', data: float32ToBase64(pcm16k) }));
+        };
+
+        micSource.connect(processor);
+        processor.connect(muteGain);
+        muteGain.connect(ctx.destination);
+      } catch (err: any) {
+        console.error('[LiveVoice] Mic error:', err);
+        setMessages(prev => [...prev, { role: 'system', text: 'Microphone access is required for live voice.' }]);
+        stopLiveVoice();
       }
     };
 
-    listenAndRespond();
+    // 5. Send a camera frame every 1.5 s when camera is active
+    const startCameraFrames = () => {
+      if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
+      frameIntervalRef.current = setInterval(() => {
+        if (!isCameraActiveRef.current || !isLiveVoiceRef.current || !sessionReadyRef.current) return;
+        const wsConn = liveWsRef.current;
+        if (!wsConn || wsConn.readyState !== WebSocket.OPEN) return;
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (!video || !canvas || video.readyState < 2) return;
+        canvas.width = 320;
+        canvas.height = 240;
+        const ctx2d = canvas.getContext('2d');
+        if (!ctx2d) return;
+        ctx2d.drawImage(video, 0, 0, 320, 240);
+        const data = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+        wsConn.send(JSON.stringify({ type: 'image', data }));
+      }, 1500);
+    };
+
+    // 6. Handle messages from the proxy
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data as string);
+
+        if (msg.type === 'ready') {
+          sessionReadyRef.current = true;
+          nextPlayTimeRef.current = 0;
+          setMessages(prev => [...prev, { role: 'system', text: 'Live voice active. Speak to BwanaShamba in English or Kiswahili.' }]);
+          startMicCapture();
+          if (isCameraActiveRef.current) startCameraFrames();
+          return;
+        }
+
+        if (msg.type === 'audio' && msg.data) {
+          isAiSpeakingRef.current = true;
+          playAudioChunk(msg.data);
+          return;
+        }
+
+        if (msg.type === 'output_transcript' && msg.text) {
+          setMessages(prev => {
+            const last = prev[prev.length - 1];
+            if (last?.role === 'ai' && (last as any).incomplete) {
+              const merged = { ...last, text: last.text + msg.text, incomplete: true };
+              const vm = voiceMessagesRef.current;
+              if (vm.length && vm[vm.length - 1].role === 'ai') vm[vm.length - 1].text = merged.text;
+              return [...prev.slice(0, -1), merged];
+            }
+            voiceMessagesRef.current.push({ role: 'ai', text: msg.text });
+            return [...prev, { role: 'ai', text: msg.text, incomplete: true } as any];
+          });
+          return;
+        }
+
+        if (msg.type === 'input_transcript' && msg.text) {
+          voiceMessagesRef.current.push({ role: 'user', text: msg.text });
+          setMessages(prev => [...prev, { role: 'user', text: msg.text }]);
+          return;
+        }
+
+        if (msg.type === 'turn_complete') {
+          isAiSpeakingRef.current = false;
+          // Finalise the last AI message (remove incomplete flag)
+          setMessages(prev => {
+            const last = prev[prev.length - 1];
+            if (last?.role === 'ai') return [...prev.slice(0, -1), { role: 'ai', text: last.text }];
+            return prev;
+          });
+          return;
+        }
+
+        if (msg.type === 'interrupted') {
+          isAiSpeakingRef.current = false;
+          for (const src of activeSourcesRef.current) { try { src.stop(); } catch {} }
+          activeSourcesRef.current = [];
+          nextPlayTimeRef.current = 0;
+          return;
+        }
+
+        if (msg.type === 'error') {
+          console.error('[LiveVoice] Proxy error:', msg.message);
+          setMessages(prev => [...prev, { role: 'system', text: `Session error: ${msg.message}` }]);
+        }
+      } catch (err) {
+        console.error('[LiveVoice] Message parse error:', err);
+      }
+    };
+
+    ws.onerror = () => {
+      if (isLiveVoiceRef.current) {
+        setMessages(prev => [...prev, { role: 'system', text: 'Connection error. Please try again.' }]);
+        stopLiveVoice();
+      }
+    };
+
+    ws.onclose = () => {
+      if (isLiveVoiceRef.current) stopLiveVoice();
+    };
   };
 
   const voiceMessagesRef = useRef<{role: string, text: string}[]>([]);
@@ -644,11 +732,10 @@ export default function LiveScout() {
     sessionReadyRef.current = false;
     setIsLiveVoice(false);
     isAiSpeakingRef.current = false;
-    try { window.speechSynthesis?.cancel(); } catch {}
-    if (speechRecognitionRef.current) {
-      try { speechRecognitionRef.current.stop(); } catch {}
-      speechRecognitionRef.current = null;
-    }
+    // Stop any queued audio playback
+    for (const src of activeSourcesRef.current) { try { src.stop(); } catch {} }
+    activeSourcesRef.current = [];
+    nextPlayTimeRef.current = 0;
     if (liveWsRef.current) {
       try { liveWsRef.current.close(); } catch {}
       liveWsRef.current = null;
