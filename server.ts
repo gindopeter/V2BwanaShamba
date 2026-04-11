@@ -328,8 +328,12 @@ Jibu kwa JSON tu, bila markdown:
     }
   });
 
+  // Create the HTTP server first so Vite can attach its HMR WebSocket to it
+  const httpServer = http.createServer(app);
+  setupLiveVoiceProxy(httpServer);
+
   if (process.env.NODE_ENV === 'production') {
-    const distPath = path.join(__dirname, 'dist');
+    const distPath = path.join(__dirname, 'dist/public');
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
@@ -337,14 +341,22 @@ Jibu kwa JSON tu, bila markdown:
   } else {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        // allowedHosts:true is required for Vite 6's shouldHandle() check on WS
+        // upgrades — without it every non-localhost host is rejected (→ 502).
+        allowedHosts: true,
+        // hmr.server shares Vite's WebSocket with our Express httpServer so
+        // upgrades arrive on port 5000 — the only port Replit proxies.
+        // No protocol/host/clientPort override: Vite client auto-detects
+        // ws:// vs wss:// from page.location and uses location.hostname:port,
+        // which works for both the local preview and the public proxy URL.
+        hmr: { server: httpServer },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   }
-
-  const httpServer = http.createServer(app);
-  setupLiveVoiceProxy(httpServer);
 
   httpServer.listen(port, () => {
     console.log(`[startup] Server running on port ${port}`);

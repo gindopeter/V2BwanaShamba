@@ -153,7 +153,17 @@ export function setupLiveVoiceProxy(server: HttpServer) {
       return;
     }
 
-    if (parsedUrl.pathname !== '/api/live-voice-ws') return;
+    if (parsedUrl.pathname !== '/api/live-voice-ws') {
+      // Replit's proxy strips the `sec-websocket-protocol` header, which causes
+      // Vite's HMR upgrade listener to silently ignore the request (it only
+      // handles upgrades with protocol='vite-hmr').  Inject it here — this
+      // handler runs first, so by the time Vite's listener fires the header
+      // is already present and the HMR connection succeeds.
+      if (!request.headers['sec-websocket-protocol']) {
+        (request.headers as Record<string, string>)['sec-websocket-protocol'] = 'vite-hmr';
+      }
+      return;
+    }
 
     const token = parsedUrl.searchParams.get('token');
     console.log(`[LiveProxy] Upgrade request, token=${token ? token.substring(0, 8) + '...' : 'none'}`);
