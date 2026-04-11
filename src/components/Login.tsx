@@ -162,14 +162,14 @@ export default function Login({ onLogin }: LoginProps) {
             onClick={() => setLang('en')}
             className={`text-xs px-2 py-1 rounded transition-all ${lang === 'en' ? 'text-white font-bold' : 'text-white/40 hover:text-white/60'}`}
           >
-            EN
+            English
           </button>
           <span className="text-white/20 text-xs">|</span>
           <button
             onClick={() => setLang('sw')}
             className={`text-xs px-2 py-1 rounded transition-all ${lang === 'sw' ? 'text-white font-bold' : 'text-white/40 hover:text-white/60'}`}
           >
-            SW
+            Kiswahili
           </button>
         </div>
       </div>
@@ -259,9 +259,9 @@ export default function Login({ onLogin }: LoginProps) {
       </div>
 
       <div className="flex justify-center gap-3 mt-6">
-        <button onClick={() => setLang('en')} className={`text-xs font-bold transition-colors ${lang === 'en' ? 'text-[#035925]' : 'text-[#5d6c7b]/50 hover:text-[#5d6c7b]'}`}>EN</button>
+        <button onClick={() => setLang('en')} className={`text-xs font-bold transition-colors ${lang === 'en' ? 'text-[#035925]' : 'text-[#5d6c7b]/50 hover:text-[#5d6c7b]'}`}>English</button>
         <span className="text-[#002c11]/20">|</span>
-        <button onClick={() => setLang('sw')} className={`text-xs font-bold transition-colors ${lang === 'sw' ? 'text-[#035925]' : 'text-[#5d6c7b]/50 hover:text-[#5d6c7b]'}`}>SW</button>
+        <button onClick={() => setLang('sw')} className={`text-xs font-bold transition-colors ${lang === 'sw' ? 'text-[#035925]' : 'text-[#5d6c7b]/50 hover:text-[#5d6c7b]'}`}>Kiswahili</button>
       </div>
     </div>
   );
