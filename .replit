@@ -112,8 +112,8 @@ localPort = 24678
 externalPort = 8008
 
 [deployment]
-deploymentTarget = "autoscale"
-run = ["npx", "tsx", "server.ts"]
+deploymentTarget = "vm"
+run = ["bash", "start_production.sh"]
 build = ["npm", "run", "build"]
 
 # [[ports]]
