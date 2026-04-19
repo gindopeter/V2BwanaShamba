@@ -116,6 +116,11 @@ deploymentTarget = "vm"
 run = ["bash", "start_production.sh"]
 build = ["npm", "run", "build"]
 
+[userenv]
+
+[userenv.production]
+NODE_ENV = "production"
+
 # [[ports]]
 # localPort = 24678
 # externalPort = 3000
