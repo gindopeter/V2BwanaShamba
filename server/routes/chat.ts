@@ -85,7 +85,7 @@ router.post('/guest', async (req, res) => {
       req.socket?.remoteAddress ||
       'unknown';
 
-    const GUEST_LIMIT = 5;
+    const GUEST_LIMIT = 10;
     const WINDOW_HOURS = 24;
 
     let guestLog = await dbGet('SELECT * FROM guest_chat_logs WHERE ip_address = ?', ip);
@@ -127,10 +127,15 @@ router.post('/guest', async (req, res) => {
     if (!apiKey) return res.status(500).json({ error: 'AI service unavailable' });
 
     const ai = new GoogleGenAI({ apiKey });
-    const langInstr =
-      language === 'sw' ? 'Jibu DAIMA kwa Kiswahili tu.' : 'Always respond in English.';
 
-    const systemInstruction = `You are BwanaShamba, an AI farming assistant for farmers in Tanzania. ${langInstr}
+    const systemInstruction = language === 'sw'
+      ? `Wewe ni BwanaShamba, msaidizi wa kilimo wa AI kwa wakulima Tanzania.
+KANUNI MUHIMU: Jibu DAIMA kwa Kiswahili tu. Usijibu kwa Kiingereza kamwe, hata kama mtumiaji ataandika kwa Kiingereza.
+Wasaidie wakulima kuhusu mazao, udongo, wadudu, magonjwa, mbolea, hali ya hewa, na bei za soko.
+Jibu kwa ufupi, vitendo, na urafiki.
+Tarehe ya leo: ${new Date().toISOString().split('T')[0]}
+Kumbuka: JIBU KWA KISWAHILI TU.`
+      : `You are BwanaShamba, an AI farming assistant for farmers in Tanzania. Always respond in English.
 You help farmers with questions about crops, soil, pests, diseases, fertilizers, weather, and market prices.
 Be concise, practical, and friendly.
 Current Date: ${new Date().toISOString().split('T')[0]}`;

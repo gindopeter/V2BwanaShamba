@@ -51,7 +51,7 @@ export default function Login({ onLogin }: LoginProps) {
   const [guestLoading, setGuestLoading] = useState(false);
   const [guestLimitReached, setGuestLimitReached] = useState(false);
   const [guestLimitMsg, setGuestLimitMsg] = useState('');
-  const [guestRemaining, setGuestRemaining] = useState(5);
+  const [guestRemaining, setGuestRemaining] = useState(10);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
