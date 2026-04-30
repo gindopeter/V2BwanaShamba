@@ -93,7 +93,7 @@ If the ADK service is unavailable, the Node.js server falls back to direct Gemin
 
 ## Auth System
 
-- **Public self-registration** — farmers register via phone (SMS OTP via Africa's Talking) or email
+- **Public self-registration** — farmers register via phone (SMS OTP via Africa's Talking) or email (OTP via Gmail SMTP/Nodemailer — `GMAIL_USER` + `GMAIL_APP_PASSWORD` secrets required)
 - Default admin: `admin@bwanashamba.com` / `admin123` (seeded on first run, role: admin, platform-level only)
 - Passwords hashed with bcryptjs (10 rounds)
 - Sessions stored in PostgreSQL (connect-pg-simple) in production, SQLite in development

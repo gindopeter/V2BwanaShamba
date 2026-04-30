@@ -121,6 +121,8 @@ build = ["npm", "run", "build"]
 [userenv.production]
 NODE_ENV = "production"
 
+[userenv.shared]
+
 # [[ports]]
 # localPort = 24678
 # externalPort = 3000
