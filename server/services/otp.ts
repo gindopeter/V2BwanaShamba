@@ -1,4 +1,5 @@
 import { dbRun, dbGet, dbExec, isPostgres } from '../db.ts';
+import nodemailer from 'nodemailer';
 
 export async function ensureOtpTable() {
   if (isPostgres) {
@@ -109,4 +110,68 @@ export async function sendSmsOtp(phoneNumber: string, code: string, lang: string
       console.warn(`[AT SMS] Delivery status: ${status}`);
     }
   }
+}
+
+export async function sendEmailOtp(email: string, code: string, lang: string): Promise<void> {
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailPass = process.env.GMAIL_APP_PASSWORD;
+
+  if (!gmailUser || !gmailPass) {
+    console.log(`[OTP] Gmail not configured — email OTP for ${email}: ${code}`);
+    return;
+  }
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: gmailUser, pass: gmailPass },
+  });
+
+  const isSwahili = lang === 'sw';
+
+  const subject = isSwahili
+    ? 'Nambari yako ya uthibitisho wa BwanaShamba'
+    : 'Your BwanaShamba Verification Code';
+
+  const html = isSwahili
+    ? `
+      <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f9fafb;border-radius:12px;">
+        <div style="text-align:center;margin-bottom:24px;">
+          <h2 style="color:#035925;margin:0;">🌱 BwanaShamba</h2>
+          <p style="color:#5d6c7b;margin:4px 0;">Msaidizi wa Kilimo wa AI</p>
+        </div>
+        <p style="color:#1a2e1a;font-size:16px;">Habari!</p>
+        <p style="color:#1a2e1a;">Nambari yako ya uthibitisho ni:</p>
+        <div style="background:#035925;color:#fff;font-size:36px;font-weight:bold;letter-spacing:8px;text-align:center;padding:20px;border-radius:8px;margin:24px 0;">
+          ${code}
+        </div>
+        <p style="color:#5d6c7b;font-size:14px;">Nambari hii inatumika kwa dakika <strong>10</strong> tu.</p>
+        <p style="color:#5d6c7b;font-size:14px;">Ikiwa hukuomba hii, puuza barua pepe hii.</p>
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
+        <p style="color:#9ca3af;font-size:12px;text-align:center;">© BwanaShamba — Kilimo Bora Tanzania</p>
+      </div>`
+    : `
+      <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f9fafb;border-radius:12px;">
+        <div style="text-align:center;margin-bottom:24px;">
+          <h2 style="color:#035925;margin:0;">🌱 BwanaShamba</h2>
+          <p style="color:#5d6c7b;margin:4px 0;">AI Farm Operations Assistant</p>
+        </div>
+        <p style="color:#1a2e1a;font-size:16px;">Hello!</p>
+        <p style="color:#1a2e1a;">Your email verification code is:</p>
+        <div style="background:#035925;color:#fff;font-size:36px;font-weight:bold;letter-spacing:8px;text-align:center;padding:20px;border-radius:8px;margin:24px 0;">
+          ${code}
+        </div>
+        <p style="color:#5d6c7b;font-size:14px;">This code is valid for <strong>10 minutes</strong> only.</p>
+        <p style="color:#5d6c7b;font-size:14px;">If you didn't request this, you can safely ignore this email.</p>
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
+        <p style="color:#9ca3af;font-size:12px;text-align:center;">© BwanaShamba — Smart Farming in Tanzania</p>
+      </div>`;
+
+  await transporter.sendMail({
+    from: `"BwanaShamba" <${gmailUser}>`,
+    to: email,
+    subject,
+    html,
+  });
+
+  console.log(`[OTP] Email sent to ${email}`);
 }

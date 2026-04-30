@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { dbAll, dbGet, dbRun, isPostgres, getSqliteDb, getPgPool } from '../db.ts';
 import { isAuthenticated, isAdmin } from '../middleware/auth.ts';
-import { createOtp, verifyOtp, sendSmsOtp, ensureOtpTable } from '../services/otp.ts';
+import { createOtp, verifyOtp, sendSmsOtp, sendEmailOtp, ensureOtpTable } from '../services/otp.ts';
 
 ensureOtpTable().catch(err => console.error('[OTP] Table init error:', err));
 
@@ -140,7 +140,7 @@ router.post('/send-otp', async (req, res) => {
       if (existing) return res.status(409).json({ message: 'An account with this email already exists' });
 
       const code = await createOtp(email, 'email');
-      console.log(`[OTP] Email OTP for ${email}: ${code}`);
+      await sendEmailOtp(email, code, lang || 'en');
       return res.json({ success: true, target: email, type: 'email', dev_code: process.env.NODE_ENV !== 'production' ? code : undefined });
     }
   } catch (err: any) {
