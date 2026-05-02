@@ -6,30 +6,6 @@ interface LoginProps {
   onLogin: (user: any) => void;
 }
 
-const ANIMATIONS = `
-@keyframes fadeUp {
-  0% { opacity: 0; transform: translateY(30px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-@keyframes slideInLeft {
-  0% { opacity: 0; transform: translateX(-40px); }
-  100% { opacity: 1; transform: translateX(0); }
-}
-@keyframes scaleUp {
-  0% { opacity: 0; transform: scale(0.92); }
-  100% { opacity: 1; transform: scale(1); }
-}
-@keyframes numberCount {
-  0% { opacity: 0; transform: translateY(20px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-@keyframes panSlow {
-  0% { transform: scale(1.05) translate(0, 0); }
-  50% { transform: scale(1.1) translate(-1%, -1%); }
-  100% { transform: scale(1.05) translate(0, 0); }
-}
-`;
-
 type Panel = 'landing' | 'signin' | 'register' | 'chat';
 
 interface GuestMessage {
@@ -37,12 +13,72 @@ interface GuestMessage {
   text: string;
 }
 
+const ANIMATIONS = `
+@keyframes fieldBreath {
+  0%   { transform: scale(1.055) translate3d(-0.7%,-0.4%,0) rotate(-0.15deg); }
+  28%  { transform: scale(1.065) translate3d(0.35%,-0.2%,0) rotate(0.12deg); }
+  58%  { transform: scale(1.06)  translate3d(-0.15%,0.25%,0) rotate(-0.08deg); }
+  100% { transform: scale(1.055) translate3d(-0.7%,-0.4%,0) rotate(-0.15deg); }
+}
+@keyframes windLight {
+  0%   { transform: translate3d(-18%,5%,0) skewX(-10deg); opacity:0.06; }
+  38%  { transform: translate3d(18%,-2%,0) skewX(-10deg); opacity:0.12; }
+  72%  { transform: translate3d(-4%,3%,0)  skewX(-10deg); opacity:0.08; }
+  100% { transform: translate3d(-18%,5%,0) skewX(-10deg); opacity:0.06; }
+}
+@keyframes sheetUp {
+  from { transform: translateY(32px); opacity:0; }
+  to   { transform: translateY(0);    opacity:1; }
+}
+@keyframes dotBounce {
+  0%,80%,100% { transform: translateY(0); }
+  40%         { transform: translateY(-6px); }
+}
+`;
+
+const sharedSheetStyle: React.CSSProperties = {
+  position: 'fixed',
+  bottom: 18,
+  zIndex: 30,
+  borderRadius: 22,
+  padding: 14,
+  background: 'rgba(12,30,18,0.82)',
+  border: '1px solid rgba(255,255,255,0.10)',
+  boxShadow: '0 18px 38px rgba(0,0,0,0.4)',
+  backdropFilter: 'blur(22px)',
+  WebkitBackdropFilter: 'blur(22px)',
+  animation: 'sheetUp 260ms ease forwards',
+  color: 'white',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  margin: '11px 0 6px',
+  color: 'rgba(255,255,255,0.65)',
+  fontSize: 10,
+  textTransform: 'uppercase',
+  fontWeight: 800,
+  letterSpacing: '0.12em',
+};
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  height: 42,
+  border: '1px solid rgba(255,255,255,0.15)',
+  borderRadius: 13,
+  color: 'white',
+  background: 'rgba(5,10,7,0.55)',
+  outline: 0,
+  padding: '0 13px',
+  fontFamily: 'inherit',
+  fontSize: 13,
+};
+
 export default function Login({ onLogin }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [mounted, setMounted] = useState(false);
   const [panel, setPanel] = useState<Panel>('landing');
   const [lang, setLang] = useState<Language>('en');
 
@@ -54,7 +90,6 @@ export default function Login({ onLogin }: LoginProps) {
   const [guestRemaining, setGuestRemaining] = useState(10);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [guestMessages]);
@@ -119,348 +154,434 @@ export default function Login({ onLogin }: LoginProps) {
     }
   };
 
-  const logoSvg = (
-    <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-    </svg>
-  );
-
-  const renderLandingContent = (dark: boolean) => (
-    <>
-      <div
-        className="space-y-2"
-        style={{ animation: mounted ? 'fadeUp 0.8s ease-out 0.9s forwards' : 'none' }}
-      >
-        <div className="flex gap-2">
-          <button
-            onClick={() => setPanel('signin')}
-            className="flex-1 bg-[#035925] hover:bg-[#024a1f] text-white py-3.5 rounded-xl font-bold text-sm transition-all duration-300 active:scale-[0.98] border border-white/10"
-            style={{ fontFamily: "'Instrument Sans', sans-serif" }}
-          >
-            {t(lang, 'signIn')}
-          </button>
-          <button
-            onClick={() => setPanel('register')}
-            className="flex-1 bg-white/10 hover:bg-white/20 text-white py-3.5 rounded-xl font-bold text-sm transition-all duration-300 active:scale-[0.98] border border-white/20"
-            style={{ fontFamily: "'Instrument Sans', sans-serif" }}
-          >
-            {t(lang, 'signUp')}
-          </button>
-        </div>
-
-        <button
-          onClick={() => setPanel('chat')}
-          className="w-full bg-[#fc8e44] hover:bg-[#e07d3a] text-white py-3.5 rounded-xl font-bold text-sm transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2"
-          style={{ fontFamily: "'Instrument Sans', sans-serif" }}
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-          {t(lang, 'chatWithUs')}
-        </button>
-
-        <div className="flex justify-center gap-2 pt-1">
-          <button
-            onClick={() => setLang('en')}
-            className={`text-xs px-2 py-1 rounded transition-all ${lang === 'en' ? 'text-white font-bold' : 'text-white/40 hover:text-white/60'}`}
-          >
-            English
-          </button>
-          <span className="text-white/20 text-xs">|</span>
-          <button
-            onClick={() => setLang('sw')}
-            className={`text-xs px-2 py-1 rounded transition-all ${lang === 'sw' ? 'text-white font-bold' : 'text-white/40 hover:text-white/60'}`}
-          >
-            Kiswahili
-          </button>
-        </div>
-      </div>
-    </>
-  );
-
-  const signInForm = (
-    <div className="w-full max-w-[380px]">
-      <div className="lg:hidden flex items-center justify-between mb-8">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-[#035925] rounded-lg flex items-center justify-center">{logoSvg}</div>
-          <span className="text-lg font-bold text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>BwanaShamba</span>
-        </div>
-        <button onClick={() => setPanel('landing')} className="text-[#035925] text-sm font-semibold flex items-center gap-1">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
-          {t(lang, 'back')}
-        </button>
-      </div>
-
-      <div className="mb-8">
-        <h2 className="text-[26px] font-black text-[#002c11] mb-1" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>{t(lang, 'welcomeBack')}</h2>
-        <p className="text-[#5d6c7b] text-sm">{t(lang, 'signInDashboard')}</p>
-      </div>
-
-      <form onSubmit={handleSignIn} className="space-y-4">
-        <div>
-          <label className="block text-[11px] font-bold text-[#002c11]/60 mb-1.5 uppercase tracking-[0.12em]">{t(lang, 'emailOrPhone')}</label>
-          <input
-            type="text"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder={lang === 'sw' ? 'Barua pepe au +255 7XX XXX XXX' : 'Email or +255 7XX XXX XXX'}
-            autoComplete="username"
-            className="w-full px-4 py-3 bg-white border-2 border-[#002c11]/10 rounded-lg text-[#002c11] text-sm font-medium transition-all duration-300 focus:border-[#035925] focus:shadow-[0_0_0_3px_rgba(3,89,37,0.1)] outline-none placeholder-[#002c11]/30"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-bold text-[#002c11]/60 mb-1.5 uppercase tracking-[0.12em]">{t(lang, 'password')}</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder={t(lang, 'enterPassword')}
-            autoComplete="current-password"
-            className="w-full px-4 py-3 bg-white border-2 border-[#002c11]/10 rounded-lg text-[#002c11] text-sm font-medium transition-all duration-300 focus:border-[#035925] focus:shadow-[0_0_0_3px_rgba(3,89,37,0.1)] outline-none placeholder-[#002c11]/30"
-          />
-        </div>
-
-        {error && (
-          <div className="text-red-700 text-sm bg-red-50 p-3 rounded-lg border border-red-200 font-medium">{error}</div>
-        )}
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-[#035925] hover:bg-[#002c11] text-white py-3.5 rounded-lg font-bold text-sm transition-all duration-300 relative overflow-hidden group disabled:opacity-70 disabled:cursor-not-allowed active:scale-[0.98]"
-          style={{ fontFamily: "'Instrument Sans', sans-serif" }}
-        >
-          <span className="relative z-10 flex items-center justify-center gap-2">
-            {loading ? <span className="animate-pulse">{lang === 'sw' ? 'Inaingia...' : 'Signing in...'}</span> : (
-              <>{t(lang, 'signIn')} <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" /></svg></>
-            )}
-          </span>
-        </button>
-      </form>
-
-      <div className="flex items-center gap-3 my-6">
-        <div className="flex-1 h-px bg-[#002c11]/10"></div>
-        <span className="text-[10px] text-[#5d6c7b]/60 font-bold uppercase tracking-widest">{t(lang, 'or')}</span>
-        <div className="flex-1 h-px bg-[#002c11]/10"></div>
-      </div>
-
-      <div className="space-y-2">
-        <button
-          onClick={() => setPanel('register')}
-          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-[#035925]/20 text-[#035925] hover:border-[#035925]/40 hover:bg-[#035925]/5 font-bold text-sm transition-colors"
-        >
-          {t(lang, 'signUp')}
-        </button>
-        <button
-          onClick={() => setPanel('chat')}
-          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#fc8e44] hover:bg-[#e07d3a] text-white font-bold text-sm transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-          {t(lang, 'chatWithUs')}
-        </button>
-      </div>
-
-      <div className="flex justify-center gap-3 mt-6">
-        <button onClick={() => setLang('en')} className={`text-xs font-bold transition-colors ${lang === 'en' ? 'text-[#035925]' : 'text-[#5d6c7b]/50 hover:text-[#5d6c7b]'}`}>English</button>
-        <span className="text-[#002c11]/20">|</span>
-        <button onClick={() => setLang('sw')} className={`text-xs font-bold transition-colors ${lang === 'sw' ? 'text-[#035925]' : 'text-[#5d6c7b]/50 hover:text-[#5d6c7b]'}`}>Kiswahili</button>
-      </div>
-    </div>
-  );
-
-  const guestChatPanel = (
-    <div className="w-full max-w-[420px] flex flex-col h-full max-h-[600px]">
-      <div className="lg:hidden flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-[#035925] rounded-lg flex items-center justify-center">{logoSvg}</div>
-          <span className="text-lg font-bold text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>BwanaShamba</span>
-        </div>
-        <button onClick={() => setPanel('landing')} className="text-[#035925] text-sm font-semibold flex items-center gap-1">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
-          {t(lang, 'back')}
-        </button>
-      </div>
-
-      <div className="mb-4">
-        <h2 className="text-[22px] font-black text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
-          {t(lang, 'guestChatTitle')}
-        </h2>
-        <p className="text-[#5d6c7b] text-sm">{t(lang, 'guestChatSubtitle')}</p>
-        {!guestLimitReached && (
-          <p className="text-[11px] text-[#5d6c7b]/60 mt-1">
-            {lang === 'sw' ? `Ujumbe ${guestRemaining} uliosalia` : `${guestRemaining} messages remaining`}
-          </p>
-        )}
-      </div>
-
-      <div className="flex-1 overflow-y-auto space-y-3 pr-1 mb-4 min-h-[180px] max-h-[300px]">
-        {guestMessages.length === 0 && (
-          <div className="text-center py-8">
-            <div className="w-14 h-14 bg-[#035925]/10 rounded-2xl flex items-center justify-center mx-auto mb-3">
-              <svg className="w-7 h-7 text-[#035925]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-            </div>
-            <p className="text-sm text-[#5d6c7b]">
-              {lang === 'sw' ? 'Niulize swali lolote kuhusu kilimo!' : 'Ask me anything about farming!'}
-            </p>
-          </div>
-        )}
-        {guestMessages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm ${
-              msg.role === 'user'
-                ? 'bg-[#035925] text-white rounded-tr-sm'
-                : 'bg-[#f9f6f1] text-[#002c11] rounded-tl-sm'
-            }`}>
-              {msg.text}
-            </div>
-          </div>
-        ))}
-        {guestLoading && (
-          <div className="flex justify-start">
-            <div className="bg-[#f9f6f1] px-3 py-2 rounded-xl rounded-tl-sm">
-              <span className="flex gap-1 items-center">
-                <span className="w-1.5 h-1.5 bg-[#035925]/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                <span className="w-1.5 h-1.5 bg-[#035925]/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                <span className="w-1.5 h-1.5 bg-[#035925]/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-              </span>
-            </div>
-          </div>
-        )}
-        <div ref={chatEndRef} />
-      </div>
-
-      {guestLimitReached ? (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
-          <p className="text-sm font-bold text-amber-800 mb-1">{t(lang, 'guestLimitReached')}</p>
-          <p className="text-xs text-amber-700 mb-3">{guestLimitMsg || t(lang, 'guestLimitMsg')}</p>
-          <button
-            onClick={() => setPanel('register')}
-            className="w-full bg-[#035925] hover:bg-[#002c11] text-white py-2.5 rounded-lg font-bold text-sm transition-colors"
-          >
-            {t(lang, 'registerPrompt')}
-          </button>
-        </div>
-      ) : (
-        <form onSubmit={handleGuestChat} className="flex gap-2">
-          <input
-            type="text"
-            value={guestInput}
-            onChange={e => setGuestInput(e.target.value)}
-            placeholder={t(lang, 'chatPlaceholder')}
-            className="flex-1 px-4 py-3 bg-[#f9f6f1] border border-[#002c11]/10 rounded-xl text-[#002c11] text-sm outline-none focus:border-[#035925] transition-colors"
-            disabled={guestLoading}
-          />
-          <button
-            type="submit"
-            disabled={guestLoading || !guestInput.trim()}
-            className="px-4 bg-[#035925] hover:bg-[#002c11] text-white rounded-xl transition-colors disabled:opacity-50"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-          </button>
-        </form>
-      )}
-
-      <div className="flex items-center gap-2 mt-3">
-        <button onClick={() => setPanel('signin')} className="flex-1 text-xs text-center text-[#5d6c7b] hover:text-[#002c11] transition-colors font-medium">
-          {t(lang, 'signIn')}
-        </button>
-        <span className="text-[#002c11]/20">|</span>
-        <button onClick={() => setPanel('register')} className="flex-1 text-xs text-center text-[#035925] hover:text-[#002c11] transition-colors font-bold">
-          {t(lang, 'signUp')}
-        </button>
-      </div>
-    </div>
-  );
-
-  const activeRightPanel = () => {
-    if (panel === 'signin') return signInForm;
-    if (panel === 'register') return (
+  if (panel === 'register') {
+    return (
       <Register
         onRegister={onLogin}
-        onBack={() => setPanel('signin')}
+        onBack={() => setPanel('landing')}
         initialLanguage={lang}
       />
     );
-    if (panel === 'chat') return guestChatPanel;
-    return null;
-  };
+  }
 
   return (
     <>
       <style>{ANIMATIONS}</style>
-      <div className="min-h-screen flex" style={{ fontFamily: "'Lato', system-ui, sans-serif" }}>
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          overflow: 'hidden',
+          fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
+          background: '#07170d',
+        }}
+      >
+        {/* Hero photo */}
+        <img
+          src="/assets/farm-field-hq.jpg"
+          alt=""
+          aria-hidden="true"
+          style={{
+            position: 'absolute', inset: 0,
+            width: '100%', height: '100%',
+            objectFit: 'cover', objectPosition: '52% 50%',
+            filter: 'saturate(1.16) contrast(1.08)',
+            animation: 'fieldBreath 9s ease-in-out infinite',
+            transformOrigin: '50% 88%',
+            willChange: 'transform',
+          }}
+        />
 
-        {/* Mobile: full screen landing (shown when panel === 'landing') */}
-        {panel === 'landing' && (
-          <div className="lg:hidden fixed inset-0 z-50 flex flex-col bg-[#002c11]">
-            <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 30% 60%, #024a1f 0%, #011a0a 100%)' }}></div>
-            <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff'%3E%3Ccircle cx='40' cy='40' r='1'/%3E%3C/g%3E%3C/svg%3E\")" }}></div>
+        {/* Wind-light shimmer */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute', inset: 0, pointerEvents: 'none',
+            background: [
+              'linear-gradient(105deg, transparent 0 28%, rgba(255,255,255,0.16) 38%, transparent 52% 100%)',
+              'linear-gradient(82deg, transparent 0 48%, rgba(255,232,142,0.08) 56%, transparent 66% 100%)',
+            ].join(','),
+            mixBlendMode: 'soft-light',
+            animation: 'windLight 6.8s ease-in-out infinite',
+            willChange: 'transform, opacity',
+          }}
+        />
 
-            <div className="relative z-10 flex flex-col h-full p-6 justify-between">
-              <div style={{ animation: mounted ? 'slideInLeft 0.8s ease-out forwards' : 'none', opacity: mounted ? undefined : 0 }}>
-                <div className="flex items-center gap-3 pt-2">
-                  <div className="w-10 h-10 bg-[#035925] rounded-lg flex items-center justify-center border border-white/10">{logoSvg}</div>
-                  <span className="text-lg font-bold text-white" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>BwanaShamba</span>
-                </div>
+        {/* Dark gradient for readability */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute', inset: 0,
+            background: [
+              'linear-gradient(180deg, rgba(3,8,4,0.05) 0%, rgba(5,14,8,0.14) 35%, rgba(3,12,6,0.86) 72%, rgba(4,12,7,0.98) 100%)',
+              'linear-gradient(90deg, rgba(4,15,8,0.35), transparent 52%)',
+            ].join(','),
+          }}
+        />
+
+        {/* Main layout */}
+        <div
+          style={{
+            position: 'relative',
+            zIndex: 10,
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            padding: '22px 20px 20px',
+            color: 'white',
+            maxWidth: 480,
+            margin: '0 auto',
+          }}
+        >
+          {/* Logo */}
+          <div style={{ fontWeight: 800, fontSize: 19, letterSpacing: '-0.03em' }}>
+            BwanaShamba
+          </div>
+
+          {/* Hero copy — pushed to bottom by auto margin */}
+          <div style={{ marginTop: 'auto', paddingBottom: 18 }}>
+            <h1
+              style={{
+                margin: '0 0 12px',
+                fontSize: 'clamp(30px, 8.5vw, 40px)',
+                lineHeight: 1.03,
+                letterSpacing: '-0.065em',
+                fontWeight: 700,
+              }}
+            >
+              {lang === 'sw' ? (
+                <>Kilimo Bora<br />Zaidi.</>
+              ) : (
+                <>Growing Smarter<br />Farming Better.</>
+              )}
+            </h1>
+            <p style={{ color: 'rgba(255,255,255,0.74)', fontSize: 13, lineHeight: 1.38, margin: 0, maxWidth: '88%' }}>
+              {lang === 'sw'
+                ? 'Nguvu za AI, ufuatiliaji wa wakati halisi, kwa kilimo endelevu.'
+                : 'Empowering farmers with digital agronomy and data driven insight'}
+            </p>
+
+            {/* Sign In / Sign Up */}
+            <div style={{ marginTop: 22, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button
+                onClick={() => setPanel('signin')}
+                style={{
+                  border: 0, minHeight: 48, padding: '0 20px', borderRadius: 999,
+                  fontWeight: 800, fontSize: 14, background: '#ffe86b', color: '#1f2717',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  boxShadow: '0 16px 28px rgba(0,0,0,0.18)',
+                  display: 'flex', justifyContent: 'center', alignItems: 'center',
+                }}
+              >
+                {t(lang, 'signIn')}
+              </button>
+              <button
+                onClick={() => setPanel('register')}
+                style={{
+                  border: '1px solid rgba(255,255,255,0.18)', minHeight: 48, padding: '0 20px', borderRadius: 999,
+                  fontWeight: 800, fontSize: 14, background: 'rgba(255,255,255,0.13)', color: 'white',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+                  boxShadow: '0 16px 28px rgba(0,0,0,0.18)',
+                  display: 'flex', justifyContent: 'center', alignItems: 'center',
+                }}
+              >
+                {t(lang, 'signUp')}
+              </button>
+            </div>
+          </div>
+
+          {/* 24/7 Agronomist support */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', textAlign: 'center' }}>
+            <strong style={{ display: 'block', color: 'white', fontSize: 13, marginBottom: 10 }}>
+              {lang === 'sw' ? 'Pata msaada wa Mkulima 24/7' : 'Get 24/7 Agronomist support'}
+            </strong>
+            <button
+              onClick={() => setPanel('chat')}
+              style={{
+                width: '100%', minHeight: 42, border: 0, borderRadius: 11,
+                background: '#ffe86b', color: '#202716',
+                fontWeight: 900, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              {t(lang, 'chatWithUs')}
+            </button>
+          </div>
+
+          {/* Language switch */}
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 9, marginTop: 14 }}>
+            <button
+              onClick={() => setLang('en')}
+              style={{
+                border: 0, background: 'transparent',
+                color: lang === 'en' ? 'white' : 'rgba(255,255,255,0.42)',
+                fontSize: 10, fontWeight: 800, padding: '2px 4px', cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              English
+            </button>
+            <span style={{ color: 'rgba(255,255,255,0.18)', fontSize: 10 }}>|</span>
+            <button
+              onClick={() => setLang('sw')}
+              style={{
+                border: 0, background: 'transparent',
+                color: lang === 'sw' ? 'white' : 'rgba(255,255,255,0.42)',
+                fontSize: 10, fontWeight: 800, padding: '2px 4px', cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              Kiswahili
+            </button>
+          </div>
+        </div>
+
+        {/* ── Sign-in sheet ── */}
+        {panel === 'signin' && (
+          <>
+            <div
+              onClick={() => setPanel('landing')}
+              style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
+            />
+            <div
+              style={{
+                ...sharedSheetStyle,
+                left: 'max(18px, calc(50% - 222px))',
+                right: 'max(18px, calc(50% - 222px))',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <strong style={{ fontSize: 15, letterSpacing: '-0.02em' }}>
+                  {t(lang, 'welcomeBack')}
+                </strong>
+                <button
+                  onClick={() => setPanel('landing')}
+                  style={{
+                    width: 30, height: 30, border: 0, borderRadius: 999,
+                    background: 'rgba(255,255,255,0.12)', color: 'white',
+                    fontSize: 18, cursor: 'pointer', fontFamily: 'inherit',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  ×
+                </button>
               </div>
 
-              <div className="flex-1 flex flex-col justify-center">
-                <div style={{ animation: mounted ? 'fadeUp 0.9s ease-out 0.2s forwards' : 'none' }}>
-                  <h1 className="text-[36px] font-black text-white leading-[1.08] mb-4" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
-                    {t(lang, 'tagline').split(' ').slice(0, 4).join(' ')}<br/>{t(lang, 'tagline').split(' ').slice(4).join(' ')}
-                  </h1>
-                  <p className="text-white/60 text-sm leading-relaxed max-w-xs">
-                    {lang === 'sw' ? 'Maarifa ya AI, ufuatiliaji wa wakati halisi, na mifumo ya kiotomatiki kwa kilimo endelevu.' : 'AI powered insights, real time monitoring, and automated systems for sustainable agriculture.'}
+              <form onSubmit={handleSignIn}>
+                <label style={labelStyle}>{t(lang, 'emailOrPhone')}</label>
+                <input
+                  type="text"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder={lang === 'sw' ? 'Barua pepe au +255 7XX XXX XXX' : 'Email or +255 7XX XXX XXX'}
+                  autoComplete="username"
+                  style={inputStyle}
+                />
+
+                <label style={labelStyle}>{t(lang, 'password')}</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder={t(lang, 'enterPassword')}
+                  autoComplete="current-password"
+                  style={inputStyle}
+                />
+
+                {error && (
+                  <div style={{
+                    marginTop: 8, padding: '8px 12px',
+                    background: 'rgba(220,38,38,0.18)', border: '1px solid rgba(220,38,38,0.35)',
+                    borderRadius: 9, fontSize: 12, color: '#fca5a5',
+                  }}>
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{
+                    width: '100%', height: 43, marginTop: 12, border: 0, borderRadius: 13,
+                    background: '#ffe86b', color: '#202716',
+                    fontWeight: 900, fontSize: 13,
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    fontFamily: 'inherit', opacity: loading ? 0.7 : 1,
+                  }}
+                >
+                  {loading ? (lang === 'sw' ? 'Inaingia...' : 'Signing in...') : t(lang, 'signIn')}
+                </button>
+              </form>
+
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 12 }}>
+                <button
+                  onClick={() => setPanel('register')}
+                  style={{ background: 'transparent', border: 0, color: 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  {t(lang, 'signUp')}
+                </button>
+                <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
+                <button
+                  onClick={() => setPanel('chat')}
+                  style={{ background: 'transparent', border: 0, color: 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  {t(lang, 'chatWithUs')}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── Guest chat sheet ── */}
+        {panel === 'chat' && (
+          <>
+            <div
+              onClick={() => setPanel('landing')}
+              style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
+            />
+            <div
+              style={{
+                ...sharedSheetStyle,
+                left: 'max(18px, calc(50% - 222px))',
+                right: 'max(18px, calc(50% - 222px))',
+                maxHeight: '75vh',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              {/* Chat header */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div>
+                  <strong style={{ fontSize: 14, letterSpacing: '-0.02em', display: 'block' }}>
+                    {t(lang, 'guestChatTitle')}
+                  </strong>
+                  {!guestLimitReached && (
+                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.48)' }}>
+                      {lang === 'sw' ? `Ujumbe ${guestRemaining} uliosalia` : `${guestRemaining} messages remaining`}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setPanel('landing')}
+                  style={{
+                    width: 30, height: 30, border: 0, borderRadius: 999,
+                    background: 'rgba(255,255,255,0.12)', color: 'white',
+                    fontSize: 18, cursor: 'pointer', fontFamily: 'inherit',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Messages */}
+              <div style={{ flex: 1, overflowY: 'auto', minHeight: 100, marginBottom: 10 }}>
+                {guestMessages.length === 0 && (
+                  <p style={{ textAlign: 'center', padding: '18px 0', color: 'rgba(255,255,255,0.45)', fontSize: 12, margin: 0 }}>
+                    {lang === 'sw' ? 'Niulize swali lolote kuhusu kilimo!' : 'Ask me anything about farming!'}
                   </p>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {guestMessages.map((msg, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                      <div style={{
+                        maxWidth: '85%', padding: '8px 12px', borderRadius: 12, fontSize: 12, lineHeight: 1.4,
+                        background: msg.role === 'user' ? '#ffe86b' : 'rgba(255,255,255,0.14)',
+                        color: msg.role === 'user' ? '#1f2717' : 'white',
+                      }}>
+                        {msg.text}
+                      </div>
+                    </div>
+                  ))}
+                  {guestLoading && (
+                    <div style={{ display: 'flex' }}>
+                      <div style={{ background: 'rgba(255,255,255,0.14)', padding: '10px 12px', borderRadius: 12, display: 'flex', gap: 4, alignItems: 'center' }}>
+                        {[0, 150, 300].map(d => (
+                          <span
+                            key={d}
+                            style={{
+                              width: 6, height: 6, background: 'rgba(255,255,255,0.55)',
+                              borderRadius: '50%', display: 'inline-block',
+                              animation: `dotBounce 1s ${d}ms infinite`,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
                 </div>
               </div>
 
-              <div>
-                {renderLandingContent(true)}
+              {guestLimitReached ? (
+                <div style={{
+                  background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.35)',
+                  borderRadius: 11, padding: 12, textAlign: 'center',
+                }}>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: '#fde68a', margin: '0 0 4px' }}>
+                    {t(lang, 'guestLimitReached')}
+                  </p>
+                  <p style={{ fontSize: 11, color: 'rgba(253,230,138,0.75)', margin: '0 0 10px' }}>
+                    {guestLimitMsg || t(lang, 'guestLimitMsg')}
+                  </p>
+                  <button
+                    onClick={() => setPanel('register')}
+                    style={{
+                      width: '100%', height: 36, border: 0, borderRadius: 9,
+                      background: '#ffe86b', color: '#202716',
+                      fontWeight: 900, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    {t(lang, 'registerPrompt')}
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleGuestChat} style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="text"
+                    value={guestInput}
+                    onChange={e => setGuestInput(e.target.value)}
+                    placeholder={t(lang, 'chatPlaceholder')}
+                    disabled={guestLoading}
+                    style={{ ...inputStyle, height: 40, flex: 1, borderRadius: 11, fontSize: 12 }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={guestLoading || !guestInput.trim()}
+                    style={{
+                      width: 40, height: 40, border: 0, borderRadius: 11,
+                      background: '#ffe86b', color: '#202716',
+                      cursor: 'pointer', fontFamily: 'inherit',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      opacity: (guestLoading || !guestInput.trim()) ? 0.45 : 1,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                  </button>
+                </form>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 10 }}>
+                <button
+                  onClick={() => setPanel('signin')}
+                  style={{ background: 'transparent', border: 0, color: 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  {t(lang, 'signIn')}
+                </button>
+                <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
+                <button
+                  onClick={() => setPanel('register')}
+                  style={{ background: 'transparent', border: 0, color: 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  {t(lang, 'signUp')}
+                </button>
               </div>
             </div>
-          </div>
+          </>
         )}
-
-        {/* Mobile: panel content (for signin/register/chat) */}
-        {panel !== 'landing' && (
-          <div className="lg:hidden fixed inset-0 z-50 bg-[#f9f6f1] flex items-start justify-center overflow-y-auto pt-6 pb-8 px-6">
-            {activeRightPanel()}
-          </div>
-        )}
-
-        {/* Desktop: Hero video panel */}
-        <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden bg-[#002c11]">
-          <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 35% 55%, #024a1f 0%, #011a0a 100%)' }}></div>
-          <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff'%3E%3Ccircle cx='40' cy='40' r='1'/%3E%3C/g%3E%3C/svg%3E\")" }}></div>
-
-          <div className="relative z-10 h-full flex flex-col justify-between p-10">
-            <div style={{ animation: mounted ? 'slideInLeft 0.8s ease-out forwards' : 'none', opacity: mounted ? undefined : 0 }}>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-[#035925] rounded-lg flex items-center justify-center border border-white/10">{logoSvg}</div>
-                <span className="text-lg font-bold text-white" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>BwanaShamba</span>
-              </div>
-            </div>
-
-            <div className="max-w-md">
-              <div style={{ animation: mounted ? 'fadeUp 0.9s ease-out 0.2s forwards' : 'none' }}>
-                <h1 className="text-[44px] font-black text-white leading-[1.05] mb-4" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
-                  {t(lang, 'tagline')}
-                </h1>
-                <p className="text-white/60 text-base leading-relaxed">
-                  {lang === 'sw' ? 'Maarifa ya AI, ufuatiliaji wa wakati halisi, na mifumo ya kiotomatiki kwa kilimo endelevu.' : 'AI powered insights, real time monitoring, and automated systems for sustainable agriculture.'}
-                </p>
-              </div>
-            </div>
-
-            <div>
-              {renderLandingContent(true)}
-            </div>
-          </div>
-        </div>
-
-        {/* Desktop: Right panel */}
-        <div className="hidden lg:flex flex-1 bg-[#f9f6f1] items-center justify-center p-8 lg:p-10 overflow-y-auto">
-          {panel === 'landing' ? signInForm : activeRightPanel()}
-        </div>
       </div>
     </>
   );
