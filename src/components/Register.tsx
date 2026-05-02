@@ -30,6 +30,7 @@ export default function Register({ onRegister, onBack, initialLanguage = 'en' }:
   const [error, setError] = useState('');
   const [resendTimer, setResendTimer] = useState(0);
   const [pendingUser, setPendingUser] = useState<any>(null);
+  const [devCode, setDevCode] = useState<string | null>(null);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -106,6 +107,7 @@ export default function Register({ onRegister, onBack, initialLanguage = 'en' }:
         setError(data.message || (lang === 'sw' ? 'Imeshindwa kutuma nambari' : 'Failed to send code'));
         return false;
       }
+      if (data.dev_code) setDevCode(data.dev_code);
       startResendTimer();
       return true;
     } catch {
@@ -293,6 +295,13 @@ export default function Register({ onRegister, onBack, initialLanguage = 'en' }:
               : `We sent a 6-digit verification code to ${masked}`}
           </p>
         </div>
+
+        {devCode && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-1">Dev mode — email not configured</p>
+            <p className="text-sm text-amber-800">Your OTP code is: <span className="font-black text-lg tracking-widest">{devCode}</span></p>
+          </div>
+        )}
 
         <form onSubmit={handleVerify} className="space-y-6">
           <div>

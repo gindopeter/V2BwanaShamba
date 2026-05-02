@@ -117,7 +117,10 @@ export async function sendEmailOtp(email: string, code: string, lang: string): P
   const gmailPass = process.env.GMAIL_APP_PASSWORD;
 
   if (!gmailUser || !gmailPass) {
-    console.log(`[OTP] Gmail not configured — email OTP for ${email}: ${code}`);
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Email service not configured. Please set GMAIL_USER and GMAIL_APP_PASSWORD environment variables.');
+    }
+    console.log(`[OTP] Gmail not configured — dev email OTP for ${email}: ${code}`);
     return;
   }
 
