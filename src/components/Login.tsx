@@ -400,9 +400,8 @@ export default function Login({ onLogin }: LoginProps) {
                 onClick={() => setPanel('register')}
                 style={{
                   border: '1px solid rgba(255,255,255,0.18)', minHeight: 48, padding: '0 20px', borderRadius: 999,
-                  fontWeight: 800, fontSize: 14, background: 'rgba(255,255,255,0.13)', color: 'white',
+                  fontWeight: 800, fontSize: 14, background: 'transparent', color: 'white',
                   cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-                  backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
                   boxShadow: '0 16px 28px rgba(0,0,0,0.18)',
                   display: 'flex', justifyContent: 'center', alignItems: 'center',
                 }}
