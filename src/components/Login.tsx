@@ -13,6 +13,12 @@ interface GuestMessage {
   text: string;
 }
 
+const TYPING_PHRASES = [
+  'Get crop health tips...',
+  'Check market prices...',
+  'Speak with an agronomist...',
+];
+
 const ANIMATIONS = `
 @keyframes fieldBreath {
   0%   { transform: scale(1.055) translate3d(-0.7%,-0.4%,0) rotate(-0.15deg); }
@@ -33,6 +39,10 @@ const ANIMATIONS = `
 @keyframes dotBounce {
   0%,80%,100% { transform: translateY(0); }
   40%         { transform: translateY(-6px); }
+}
+@keyframes cursorBlink {
+  0%,100% { opacity:1; }
+  50%     { opacity:0; }
 }
 `;
 
@@ -89,6 +99,36 @@ export default function Login({ onLogin }: LoginProps) {
   const [guestLimitMsg, setGuestLimitMsg] = useState('');
   const [guestRemaining, setGuestRemaining] = useState(10);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const [typingText, setTypingText] = useState('');
+  const typingActive = useRef(true);
+
+  useEffect(() => {
+    typingActive.current = true;
+    let phraseIndex = 0;
+    const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+    const run = async () => {
+      while (typingActive.current) {
+        const word = TYPING_PHRASES[phraseIndex % TYPING_PHRASES.length];
+        for (let i = 0; i <= word.length; i++) {
+          if (!typingActive.current) return;
+          setTypingText(word.substring(0, i));
+          await sleep(80);
+        }
+        await sleep(2000);
+        for (let i = word.length; i >= 0; i--) {
+          if (!typingActive.current) return;
+          setTypingText(word.substring(0, i));
+          await sleep(40);
+        }
+        await sleep(400);
+        phraseIndex++;
+      }
+    };
+    run();
+    return () => { typingActive.current = false; };
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -154,13 +194,34 @@ export default function Login({ onLogin }: LoginProps) {
     }
   };
 
+  const handleLandingChat = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!guestInput.trim() || guestLoading || guestLimitReached) return;
+    setPanel('chat');
+    handleGuestChat(e);
+  };
+
   if (panel === 'register') {
     return (
-      <Register
-        onRegister={onLogin}
-        onBack={() => setPanel('landing')}
-        initialLanguage={lang}
-      />
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          overflowY: 'auto',
+          background: '#f9f6f1',
+          fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
+          padding: '32px 24px 40px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+        }}
+      >
+        <Register
+          onRegister={onLogin}
+          onBack={() => setPanel('landing')}
+          initialLanguage={lang}
+        />
+      </div>
     );
   }
 
@@ -238,37 +299,97 @@ export default function Login({ onLogin }: LoginProps) {
             BwanaShamba
           </div>
 
-          {/* Hero copy — pushed to bottom by auto margin */}
-          <div style={{ marginTop: 'auto', paddingBottom: 18 }}>
-            <h1
+          {/* Centre — typing prompt */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '0 4px' }}>
+            <h2
               style={{
-                margin: '0 0 12px',
-                fontSize: 'clamp(30px, 8.5vw, 40px)',
-                lineHeight: 1.03,
-                letterSpacing: '-0.065em',
-                fontWeight: 700,
+                margin: 0,
+                fontSize: 'clamp(26px, 7.5vw, 36px)',
+                fontWeight: 600,
+                lineHeight: 1.2,
+                textAlign: 'center',
+                letterSpacing: '-0.02em',
               }}
             >
-              {lang === 'sw' ? (
-                <>Kilimo Bora<br />Zaidi.</>
-              ) : (
-                <>Growing Smarter<br />Farming Better.</>
-              )}
-            </h1>
-            <p style={{ color: 'rgba(255,255,255,0.74)', fontSize: 13, lineHeight: 1.38, margin: 0, maxWidth: '88%' }}>
+              {lang === 'sw' ? 'Ninawezaje kukusaidia leo?' : 'How can I help you today?'}
+            </h2>
+
+            {/* Glass chat input */}
+            <form onSubmit={handleLandingChat} style={{ width: '100%' }}>
+              <div
+                style={{
+                  width: '100%',
+                  padding: '0 16px',
+                  borderRadius: 16,
+                  background: 'rgba(232,239,222,0.10)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  backdropFilter: 'blur(18px)',
+                  WebkitBackdropFilter: 'blur(18px)',
+                  boxShadow: '0 18px 38px rgba(0,0,0,0.28)',
+                  minHeight: 72,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  boxSizing: 'border-box',
+                }}
+              >
+                <input
+                  type="text"
+                  value={guestInput}
+                  onChange={e => setGuestInput(e.target.value)}
+                  placeholder={typingText || (lang === 'sw' ? 'Niulize swali...' : 'Ask me anything...')}
+                  disabled={guestLoading || guestLimitReached}
+                  style={{
+                    flex: 1,
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: 'white',
+                    fontSize: 16,
+                    fontFamily: 'inherit',
+                    caretColor: 'white',
+                    textAlign: guestInput ? 'left' : 'center',
+                    padding: '20px 0',
+                  }}
+                />
+                {guestInput.trim() && (
+                  <button
+                    type="submit"
+                    disabled={guestLoading}
+                    style={{
+                      width: 38, height: 38, borderRadius: '50%',
+                      background: '#FFCC00', color: '#1f2717',
+                      border: 'none', cursor: guestLoading ? 'not-allowed' : 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0, opacity: guestLoading ? 0.5 : 1,
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+
+          {/* Footer — tagline + CTAs */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <p style={{ margin: 0, color: 'rgba(255,255,255,0.72)', fontSize: 13, lineHeight: 1.4, textAlign: 'center' }}>
               {lang === 'sw'
-                ? 'Nguvu za AI, ufuatiliaji wa wakati halisi, kwa kilimo endelevu.'
-                : 'Empowering farmers with digital agronomy and data driven insight'}
+                ? 'Kuwawezesha wakulima kupata ushauri wa kitaalamu kidigitali na unaozingatia taarifa za shamba.'
+                : 'Empowering farmers with digital agronomy and data driven insights.'}
             </p>
 
             {/* Sign In / Sign Up */}
-            <div style={{ marginTop: 22, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ width: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <button
                 onClick={() => setPanel('signin')}
                 style={{
                   border: 0, minHeight: 48, padding: '0 20px', borderRadius: 999,
-                  fontWeight: 800, fontSize: 14, background: '#ffe86b', color: '#1f2717',
-                  cursor: 'pointer', fontFamily: 'inherit',
+                  fontWeight: 800, fontSize: 14, background: '#FFCC00', color: '#1f2717',
+                  cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
                   boxShadow: '0 16px 28px rgba(0,0,0,0.18)',
                   display: 'flex', justifyContent: 'center', alignItems: 'center',
                 }}
@@ -280,7 +401,7 @@ export default function Login({ onLogin }: LoginProps) {
                 style={{
                   border: '1px solid rgba(255,255,255,0.18)', minHeight: 48, padding: '0 20px', borderRadius: 999,
                   fontWeight: 800, fontSize: 14, background: 'rgba(255,255,255,0.13)', color: 'white',
-                  cursor: 'pointer', fontFamily: 'inherit',
+                  cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
                   backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
                   boxShadow: '0 16px 28px rgba(0,0,0,0.18)',
                   display: 'flex', justifyContent: 'center', alignItems: 'center',
@@ -289,23 +410,6 @@ export default function Login({ onLogin }: LoginProps) {
                 {t(lang, 'signUp')}
               </button>
             </div>
-          </div>
-
-          {/* 24/7 Agronomist support */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', textAlign: 'center' }}>
-            <strong style={{ display: 'block', color: 'white', fontSize: 13, marginBottom: 10 }}>
-              {lang === 'sw' ? 'Pata msaada wa Mkulima 24/7' : 'Get 24/7 Agronomist support'}
-            </strong>
-            <button
-              onClick={() => setPanel('chat')}
-              style={{
-                width: '100%', minHeight: 42, border: 0, borderRadius: 11,
-                background: '#ffe86b', color: '#202716',
-                fontWeight: 900, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >
-              {t(lang, 'chatWithUs')}
-            </button>
           </div>
 
           {/* Language switch */}
@@ -402,7 +506,7 @@ export default function Login({ onLogin }: LoginProps) {
                   disabled={loading}
                   style={{
                     width: '100%', height: 43, marginTop: 12, border: 0, borderRadius: 13,
-                    background: '#ffe86b', color: '#202716',
+                    background: '#FFCC00', color: '#202716',
                     fontWeight: 900, fontSize: 13,
                     cursor: loading ? 'not-allowed' : 'pointer',
                     fontFamily: 'inherit', opacity: loading ? 0.7 : 1,
@@ -486,7 +590,7 @@ export default function Login({ onLogin }: LoginProps) {
                     <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
                       <div style={{
                         maxWidth: '85%', padding: '8px 12px', borderRadius: 12, fontSize: 12, lineHeight: 1.4,
-                        background: msg.role === 'user' ? '#ffe86b' : 'rgba(255,255,255,0.14)',
+                        background: msg.role === 'user' ? '#FFCC00' : 'rgba(255,255,255,0.14)',
                         color: msg.role === 'user' ? '#1f2717' : 'white',
                       }}>
                         {msg.text}
@@ -528,7 +632,7 @@ export default function Login({ onLogin }: LoginProps) {
                     onClick={() => setPanel('register')}
                     style={{
                       width: '100%', height: 36, border: 0, borderRadius: 9,
-                      background: '#ffe86b', color: '#202716',
+                      background: '#FFCC00', color: '#202716',
                       fontWeight: 900, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
                     }}
                   >
@@ -550,7 +654,7 @@ export default function Login({ onLogin }: LoginProps) {
                     disabled={guestLoading || !guestInput.trim()}
                     style={{
                       width: 40, height: 40, border: 0, borderRadius: 11,
-                      background: '#ffe86b', color: '#202716',
+                      background: '#FFCC00', color: '#202716',
                       cursor: 'pointer', fontFamily: 'inherit',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       opacity: (guestLoading || !guestInput.trim()) ? 0.45 : 1,
