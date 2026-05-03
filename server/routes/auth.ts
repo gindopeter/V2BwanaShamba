@@ -1,8 +1,21 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import rateLimit from 'express-rate-limit';
 import { dbAll, dbGet, dbRun, isPostgres, getSqliteDb, getPgPool } from '../db.ts';
 import { isAuthenticated, isAdmin } from '../middleware/auth.ts';
 import { createOtp, verifyOtp, sendSmsOtp, sendEmailOtp, ensureOtpTable } from '../services/otp.ts';
+
+const otpRateLimit = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => {
+    const { phone_number, email } = req.body || {};
+    return (phone_number || email || req.ip || 'unknown').toString().toLowerCase();
+  },
+  message: { message: 'Too many verification attempts. Please wait 10 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 ensureOtpTable().catch(err => console.error('[OTP] Table init error:', err));
 
@@ -23,7 +36,7 @@ router.post('/login', async (req, res) => {
       identifier, identifier
     );
 
-    if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+    if (!user || !await bcrypt.compare(password, user.password_hash)) {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
@@ -90,12 +103,20 @@ router.post('/register', async (req, res) => {
       if (existing) return res.status(409).json({ message: 'An account with this phone number already exists' });
     }
 
-    const hash = bcrypt.hashSync(password, 10);
-    const info = await dbRun(
-      'INSERT INTO users (email, phone_number, password_hash, first_name, last_name, role, language, region, district, farm_size_acres) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      email || null, phone_number || null, hash, first_name, last_name || null, 'user',
-      language || 'en', region || null, district || null, farm_size_acres || null
-    );
+    const hash = await bcrypt.hash(password, 10);
+    let info: any;
+    try {
+      info = await dbRun(
+        'INSERT INTO users (email, phone_number, password_hash, first_name, last_name, role, language, region, district, farm_size_acres) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        email || null, phone_number || null, hash, first_name, last_name || null, 'user',
+        language || 'en', region || null, district || null, farm_size_acres || null
+      );
+    } catch (insertErr: any) {
+      if (insertErr.message?.includes('UNIQUE') || insertErr.code === '23505') {
+        return res.status(409).json({ message: 'An account with this email or phone number already exists' });
+      }
+      throw insertErr;
+    }
 
     const newUser = await dbGet(
       'SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres FROM users WHERE id = ?',
@@ -118,7 +139,7 @@ router.post('/register', async (req, res) => {
 });
 
 // ─── POST /api/auth/send-otp ───────────────────────────────────────────────────
-router.post('/send-otp', async (req, res) => {
+router.post('/send-otp', otpRateLimit, async (req, res) => {
   try {
     const { phone_number, email, lang } = req.body;
     if (!phone_number && !email) {
@@ -150,7 +171,7 @@ router.post('/send-otp', async (req, res) => {
 });
 
 // ─── POST /api/auth/verify-otp ────────────────────────────────────────────────
-router.post('/verify-otp', async (req, res) => {
+router.post('/verify-otp', otpRateLimit, async (req, res) => {
   try {
     const { target, code, type, phone_number, email, password, first_name, last_name, language, region, district, farm_size_acres } = req.body;
 
@@ -166,23 +187,41 @@ router.post('/verify-otp', async (req, res) => {
       return res.status(400).json({ message: 'Invalid or expired verification code' });
     }
 
-    // OTP verified — now create the account
+    // OTP verified — check for existing account before inserting
     const pw = password;
     if (!pw || pw.length < 6) {
       return res.status(400).json({ message: 'Password must be at least 6 characters' });
     }
 
-    const hash = bcrypt.hashSync(pw, 10);
-    const info = await dbRun(
-      'INSERT INTO users (email, phone_number, password_hash, first_name, last_name, role, language, region, district, farm_size_acres, phone_verified, email_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      tp === 'phone' ? null : t,
-      tp === 'phone' ? t : null,
-      hash,
-      first_name, last_name || null, 'user',
-      language || 'en', region || null, district || null, farm_size_acres || null,
-      tp === 'phone' ? 1 : 0,
-      tp === 'email' ? 1 : 0
+    const existingUser = await dbGet(
+      tp === 'phone'
+        ? 'SELECT id FROM users WHERE phone_number = ?'
+        : 'SELECT id FROM users WHERE email = ?',
+      t
     );
+    if (existingUser) {
+      return res.status(409).json({ message: 'An account with this ' + (tp === 'phone' ? 'phone number' : 'email') + ' already exists' });
+    }
+
+    const hash = await bcrypt.hash(pw, 10);
+    let info: any;
+    try {
+      info = await dbRun(
+        'INSERT INTO users (email, phone_number, password_hash, first_name, last_name, role, language, region, district, farm_size_acres, phone_verified, email_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        tp === 'phone' ? null : t,
+        tp === 'phone' ? t : null,
+        hash,
+        first_name, last_name || null, 'user',
+        language || 'en', region || null, district || null, farm_size_acres || null,
+        tp === 'phone' ? 1 : 0,
+        tp === 'email' ? 1 : 0
+      );
+    } catch (insertErr: any) {
+      if (insertErr.message?.includes('UNIQUE') || insertErr.code === '23505') {
+        return res.status(409).json({ message: 'An account with this ' + (tp === 'phone' ? 'phone number' : 'email') + ' already exists' });
+      }
+      throw insertErr;
+    }
 
     const newUser = await dbGet(
       'SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres FROM users WHERE id = ?',
@@ -228,11 +267,11 @@ router.put('/password', isAuthenticated, async (req, res) => {
     }
 
     const user = await dbGet('SELECT * FROM users WHERE id = ?', req.session.userId!);
-    if (!user || !bcrypt.compareSync(current_password, user.password_hash)) {
+    if (!user || !await bcrypt.compare(current_password, user.password_hash)) {
       return res.status(401).json({ message: 'Current password is incorrect' });
     }
 
-    const hash = bcrypt.hashSync(new_password, 10);
+    const hash = await bcrypt.hash(new_password, 10);
     await dbRun(
       'UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       hash, req.session.userId!
@@ -276,7 +315,7 @@ router.post('/users', isAdmin, async (req, res) => {
     const existing = await dbGet('SELECT id FROM users WHERE email = ?', email);
     if (existing) return res.status(409).json({ message: 'A user with this email already exists' });
 
-    const hash = bcrypt.hashSync(password, 10);
+    const hash = await bcrypt.hash(password, 10);
     const info = await dbRun(
       'INSERT INTO users (email, password_hash, first_name, last_name, role) VALUES (?, ?, ?, ?, ?)',
       email, hash, first_name || null, last_name || null, role || 'user'
@@ -319,7 +358,7 @@ router.put('/users/:id', isAdmin, async (req, res) => {
     if (role)                     { updates.push('role = ?');          values.push(role); }
     if (password && password.length >= 6) {
       updates.push('password_hash = ?');
-      values.push(bcrypt.hashSync(password, 10));
+      values.push(await bcrypt.hash(password, 10));
     }
 
     if (updates.length > 0) {
@@ -375,12 +414,12 @@ router.delete('/users/:id', isAdmin, async (req, res) => {
 
   if (isPostgres) {
     await dbRun(
-      "UPDATE users SET is_active = 0, email = email || '_deleted_' || CAST(id AS TEXT), updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      "UPDATE users SET is_active = 0, email = CASE WHEN email IS NOT NULL THEN email || '_deleted_' || CAST(id AS TEXT) ELSE NULL END, phone_number = CASE WHEN phone_number IS NOT NULL THEN phone_number || '_deleted_' || CAST(id AS TEXT) ELSE NULL END, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       Number(id)
     );
   } else {
     await dbRun(
-      "UPDATE users SET is_active = 0, email = email || '_deleted_' || id, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      "UPDATE users SET is_active = 0, email = CASE WHEN email IS NOT NULL THEN email || '_deleted_' || id ELSE NULL END, phone_number = CASE WHEN phone_number IS NOT NULL THEN phone_number || '_deleted_' || id ELSE NULL END, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       Number(id)
     );
   }

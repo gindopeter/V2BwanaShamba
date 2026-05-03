@@ -130,9 +130,16 @@ export default function Register({ onRegister, onBack, initialLanguage = 'en' }:
       setError(lang === 'sw' ? 'Barua pepe inahitajika' : 'Email is required');
       return;
     }
-    if (method === 'phone' && !form.phone_number.trim()) {
-      setError(lang === 'sw' ? 'Nambari ya simu inahitajika' : 'Phone number is required');
-      return;
+    if (method === 'phone') {
+      const digits = form.phone_number.replace(/^\+255/, '').trim();
+      if (!digits) {
+        setError(lang === 'sw' ? 'Nambari ya simu inahitajika' : 'Phone number is required');
+        return;
+      }
+      if (!/^\d{9}$/.test(digits)) {
+        setError(lang === 'sw' ? 'Ingiza nambari sahihi ya simu (mfano: +255 712 345 678)' : 'Enter a valid phone number (e.g. +255 712 345 678)');
+        return;
+      }
     }
     if (!form.farm_size_acres || parseFloat(form.farm_size_acres) <= 0) {
       setError(lang === 'sw' ? 'Ukubwa wa shamba unahitajika' : 'Farm size is required');

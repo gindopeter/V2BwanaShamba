@@ -38,11 +38,16 @@ export const isAdmin: RequestHandler = async (req, res, next) => {
   }
 
   const user = await dbGet(
-    'SELECT role FROM users WHERE id = ?',
+    'SELECT role, is_active FROM users WHERE id = ?',
     req.session.userId
   );
 
-  if (!user || user.role !== 'admin') {
+  if (!user || user.is_active === 0) {
+    req.session.destroy(() => {});
+    return res.status(401).json({ message: 'Account deactivated' });
+  }
+
+  if (user.role !== 'admin') {
     return res.status(403).json({ message: 'Forbidden: admin access required' });
   }
 

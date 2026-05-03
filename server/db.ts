@@ -282,7 +282,12 @@ async function runMigrations() {
     // Allow phone-only registration: drop NOT NULL on email if it exists
     try {
       await pgPool.query("ALTER TABLE users ALTER COLUMN email DROP NOT NULL");
-    } catch {}
+    } catch (err: any) {
+      // Ignore "column does not have a constraint" errors; log anything unexpected
+      if (!err.message?.includes('does not exist') && !err.message?.includes('not null')) {
+        console.warn('[DB] ALTER COLUMN email DROP NOT NULL:', err.message);
+      }
+    }
 
     // Add current_growth_day to zones if missing
     if (colNames.length > 0 && !colNames.includes('current_growth_day')) {
@@ -346,12 +351,13 @@ async function runMigrations() {
 async function seedData() {
   const usersCount = await dbGet('SELECT count(*) as count FROM users');
   if (usersCount.count === 0 || usersCount.count === '0') {
-    const hash = bcrypt.hashSync('admin123', 10);
+    const hash = await bcrypt.hash('admin123', 10);
     await dbRun(
       'INSERT INTO users (email, password_hash, first_name, last_name, role, email_verified, language) VALUES (?, ?, ?, ?, ?, ?, ?)',
       'admin@bwanashamba.com', hash, 'Platform', 'Admin', 'admin', 1, 'en'
     );
-    console.log('[DB] Seeded platform admin: admin@bwanashamba.com / admin123');
+    // Do NOT log the password — check server logs only during initial setup
+    console.log('[DB] Seeded platform admin: admin@bwanashamba.com (change password on first login)');
   }
 }
 

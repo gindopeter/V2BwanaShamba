@@ -74,18 +74,29 @@ export default function App() {
   }, [user]);
 
   const handleTaskAction = async (id: number, action: string) => {
+    const previous = tasks;
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status: action as any } : t));
-    await updateTaskStatus(id, action);
+    try {
+      await updateTaskStatus(id, action);
+    } catch (e) {
+      console.error("Failed to update task status", e);
+      setTasks(previous);
+    }
   };
 
   const handleCreateTask = async (task: any) => {
     try {
-      await fetch('/api/tasks', {
+      const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(task),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error("Failed to create task:", data.message || res.status);
+        return;
+      }
       setShowNewTask(false);
       loadData();
     } catch (e) {
@@ -94,22 +105,34 @@ export default function App() {
   };
 
   const handleCreateZone = async (data: { name: string; crop_type: string; planting_date: string; area_size: number }) => {
-    await createZone(data);
-    setShowZoneModal(false);
-    loadData();
+    try {
+      await createZone(data);
+      setShowZoneModal(false);
+      loadData();
+    } catch (e) {
+      console.error("Failed to create zone", e);
+    }
   };
 
   const handleUpdateZone = async (data: { name: string; crop_type: string; planting_date: string; area_size: number }) => {
     if (!editingZone) return;
-    await updateZone(editingZone.id, data);
-    setEditingZone(null);
-    loadData();
+    try {
+      await updateZone(editingZone.id, data);
+      setEditingZone(null);
+      loadData();
+    } catch (e) {
+      console.error("Failed to update zone", e);
+    }
   };
 
   const handleDeleteZone = async (id: number) => {
-    await deleteZone(id);
-    setEditingZone(null);
-    loadData();
+    try {
+      await deleteZone(id);
+      setEditingZone(null);
+      loadData();
+    } catch (e) {
+      console.error("Failed to delete zone", e);
+    }
   };
 
   if (authLoading) {

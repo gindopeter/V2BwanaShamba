@@ -80,10 +80,8 @@ router.post('/guest', async (req, res) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    const ip =
-      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
-      req.socket?.remoteAddress ||
-      'unknown';
+    // req.ip is correctly set by Express based on trust proxy setting
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
 
     const GUEST_LIMIT = 10;
     const WINDOW_HOURS = 24;
@@ -137,13 +135,17 @@ You help farmers with questions about crops, soil, pests, diseases, fertilizers,
 Be concise, practical, and friendly.
 Current Date: ${new Date().toISOString().split('T')[0]}`;
 
-    // Build conversation history so the AI maintains context across turns.
-    // `history` is the array of prior messages sent from the browser.
+    // Build conversation history — sanitize client-supplied history to prevent prompt injection
+    const MAX_HISTORY = 20;
+    const MAX_MSG_LEN = 2000;
     const priorTurns = Array.isArray(history)
-      ? history.map((msg: { role: 'user' | 'ai'; text: string }) => ({
-          role: msg.role === 'ai' ? 'model' : 'user',
-          parts: [{ text: msg.text }],
-        }))
+      ? history
+          .filter((msg: any) => msg.role === 'user' || msg.role === 'ai')
+          .slice(-MAX_HISTORY)
+          .map((msg: any) => ({
+            role: msg.role === 'ai' ? 'model' : 'user',
+            parts: [{ text: String(msg.text || '').slice(0, MAX_MSG_LEN) }],
+          }))
       : [];
 
     const response = await ai.models.generateContent({
@@ -444,7 +446,8 @@ router.post('/analyze-crop', isAuthenticated, async (req, res) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return res.status(500).json({ error: 'Gemini API key is not configured.' });
 
-    const zone = await dbGet('SELECT * FROM zones WHERE id = ?', zone_id);
+    const userId = req.session.userId!;
+    const zone = await dbGet('SELECT * FROM zones WHERE id = ? AND user_id = ?', zone_id, userId);
     if (!zone) return res.status(404).json({ error: 'Zone not found.' });
 
     const ai = new GoogleGenAI({ apiKey });
@@ -586,15 +589,18 @@ router.post('/voice-transcript', isAuthenticated, async (req, res) => {
       convId = result.lastInsertRowid;
     }
 
+    const MAX_TRANSCRIPT_MESSAGES = 200;
+    const MAX_TRANSCRIPT_MSG_LEN = 4000;
     if (transcriptMessages && Array.isArray(transcriptMessages)) {
-      for (const msg of transcriptMessages) {
-        if (msg.role === 'system') continue;
+      const safeMessages = transcriptMessages
+        .filter((msg: any) => msg.role === 'user' || msg.role === 'ai')
+        .slice(0, MAX_TRANSCRIPT_MESSAGES);
+      for (const msg of safeMessages) {
         const role = msg.role === 'user' ? 'user' : 'ai';
+        const text = String(msg.text || '').slice(0, MAX_TRANSCRIPT_MSG_LEN);
         await dbRun(
           'INSERT INTO chat_messages (conversation_id, role, text) VALUES (?, ?, ?)',
-          convId,
-          role,
-          msg.text || ''
+          convId, role, text
         );
       }
     }

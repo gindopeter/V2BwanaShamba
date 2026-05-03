@@ -34,11 +34,12 @@ router.get('/', isAuthenticated, async (req, res) => {
 
     const zonesWithDetails = zones.map((zone: any) => {
       const plantingDate = new Date(zone.planting_date);
-      const diffDays = Math.ceil(
-        Math.abs(today.getTime() - plantingDate.getTime()) / (1000 * 60 * 60 * 24)
-      );
+      const validDate = !isNaN(plantingDate.getTime());
+      const diffDays = validDate
+        ? Math.ceil(Math.abs(today.getTime() - plantingDate.getTime()) / (1000 * 60 * 60 * 24))
+        : 0;
       const maxDays = getDaysToHarvest(zone.crop_type);
-      const harvestDate = new Date(plantingDate);
+      const harvestDate = validDate ? new Date(plantingDate) : new Date();
       harvestDate.setDate(harvestDate.getDate() + maxDays);
 
       const baseYield = getYieldPerAcre(zone.crop_type);
@@ -185,7 +186,7 @@ router.put('/:id', isAuthenticated, async (req, res) => {
       Number(id)
     );
 
-    const updated = await dbGet('SELECT * FROM zones WHERE id = ?', Number(id));
+    const updated = await dbGet('SELECT * FROM zones WHERE id = ? AND user_id = ?', Number(id), userId);
     res.json(updated);
   } catch (err: any) {
     console.error('[zones] PUT error:', err.message);

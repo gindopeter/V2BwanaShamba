@@ -44,7 +44,7 @@ export default function RecommendationsBlock({ lang = 'en' }: { lang?: Language 
 
   useEffect(() => {
     fetchRecommendations();
-  }, []);
+  }, [lang]);
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-[#002c11]/[0.04] overflow-hidden">

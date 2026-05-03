@@ -58,11 +58,14 @@ async function startServer() {
   const app = express();
   const port = process.env.PORT || 5000;
 
-  app.use('/api/chat', express.json({ limit: '100mb' }));
-  app.use('/api/chat', express.urlencoded({ extended: true, limit: '100mb' }));
+  // Large limit only for authenticated image-upload endpoints; guest endpoint gets 1mb
+  app.use('/api/chat/analyze-crop', express.json({ limit: '20mb' }));
+  app.use('/api/chat', express.json({ limit: '1mb' }));
+  app.use('/api/chat', express.urlencoded({ extended: true, limit: '1mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
+  // Cloud Run sits behind exactly one Google proxy; req.ip is set correctly by Express.
   app.set('trust proxy', 1);
 
   const sessionSecret =
@@ -130,6 +133,7 @@ async function startServer() {
   app.use('/api/chat', chatRoutes);
 
   app.post('/api/engine/run-checks', isAuthenticated, async (req, res) => {
+    try {
     const userId = req.session.userId!;
     const zones = await dbAll(
       "SELECT * FROM zones WHERE status = 'Active' AND user_id = ?",
@@ -217,12 +221,16 @@ async function startServer() {
     }
 
     res.json({ status: 'checked', weather, zones_checked: zones.length });
+    } catch (err: any) {
+      console.error('[engine/run-checks] Error:', err.message);
+      res.status(500).json({ message: 'Internal server error' });
+    }
   });
 
   app.post('/api/recommendations', isAuthenticated, async (req, res) => {
     try {
       const userId = req.session.userId!;
-      const language: string = req.body?.language || 'en';
+      const language: string = ['en', 'sw'].includes(req.body?.language) ? req.body.language : 'en';
 
       const [userProfile, zones] = await Promise.all([
         dbGet('SELECT first_name, region, district, farm_size_acres FROM users WHERE id = ?', userId),

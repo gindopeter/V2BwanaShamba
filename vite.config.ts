@@ -12,7 +12,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    allowedHosts: true,
+    allowedHosts: 'auto',
     watch: {
       ignored: [
         '**/.local/**',

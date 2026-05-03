@@ -53,6 +53,7 @@ export default function LiveScout() {
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
+  const activeConversationIdRef = useRef<number | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -117,7 +118,7 @@ export default function LiveScout() {
 
   const loadConversations = async () => {
     try {
-      const res = await fetch('/api/chat/conversations');
+      const res = await fetch('/api/chat/conversations', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setConversations(data);
@@ -129,7 +130,7 @@ export default function LiveScout() {
 
   const loadConversation = async (convId: number) => {
     try {
-      const res = await fetch(`/api/chat/conversations/${convId}/messages`);
+      const res = await fetch(`/api/chat/conversations/${convId}/messages`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         const loadedMessages = data
@@ -140,6 +141,7 @@ export default function LiveScout() {
             image: m.image_url || undefined
           }));
         setMessages(loadedMessages);
+        activeConversationIdRef.current = convId;
         setActiveConversationId(convId);
       }
     } catch (err) {
@@ -148,6 +150,7 @@ export default function LiveScout() {
   };
 
   const startNewConversation = () => {
+    activeConversationIdRef.current = null;
     setActiveConversationId(null);
     setMessages([]);
     setInputText('');
@@ -157,7 +160,7 @@ export default function LiveScout() {
   const deleteConversation = async (convId: number, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await fetch(`/api/chat/conversations/${convId}`, { method: 'DELETE' });
+      await fetch(`/api/chat/conversations/${convId}`, { method: 'DELETE', credentials: 'include' });
       if (activeConversationId === convId) {
         startNewConversation();
       }
@@ -382,9 +385,11 @@ export default function LiveScout() {
                       updated[updated.length - 1] = { role: 'system', text: errMsg };
                       return updated;
                     });
-                  } else if (parsed.type === 'start' && parsed.conversationId && !activeConversationId) {
+                  } else if (parsed.type === 'start' && parsed.conversationId && !activeConversationIdRef.current) {
+                    activeConversationIdRef.current = parsed.conversationId;
                     setActiveConversationId(parsed.conversationId);
-                  } else if (parsed.type === 'done' && parsed.conversationId && !activeConversationId) {
+                  } else if (parsed.type === 'done' && parsed.conversationId && !activeConversationIdRef.current) {
+                    activeConversationIdRef.current = parsed.conversationId;
                     setActiveConversationId(parsed.conversationId);
                   }
                 } catch { }
@@ -404,7 +409,8 @@ export default function LiveScout() {
         loadConversations();
       } else {
         const data = await chatRes.json();
-        if (data.conversationId && !activeConversationId) {
+        if (data.conversationId && !activeConversationIdRef.current) {
+          activeConversationIdRef.current = data.conversationId;
           setActiveConversationId(data.conversationId);
         }
         setMessages(prev => [...prev, { role: 'ai', text: data.reply || '' }]);
@@ -708,6 +714,7 @@ export default function LiveScout() {
       const res = await fetch('/api/chat/voice-transcript', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ messages: voiceMessages })
       });
       if (res.ok) {

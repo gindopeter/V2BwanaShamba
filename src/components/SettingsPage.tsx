@@ -480,7 +480,7 @@ function UsersSection({ currentUserId }: { currentUserId: number }) {
             </div>
             <div>
               <label className="block text-sm font-semibold text-[#002c11]/80 mb-1">{editingUser ? 'New Password (leave blank to keep)' : 'Password *'}</label>
-              <input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-3 py-2.5 border border-[#002c11]/10 rounded-lg text-[#002c11] text-sm focus:ring-2 focus:ring-[#035925]/30 focus:border-[#035925]" placeholder="Min 6 characters" />
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-3 py-2.5 border border-[#002c11]/10 rounded-lg text-[#002c11] text-sm focus:ring-2 focus:ring-[#035925]/30 focus:border-[#035925]" placeholder="Min 6 characters" />
             </div>
             <div>
               <label className="block text-sm font-semibold text-[#002c11]/80 mb-1">First Name</label>

@@ -1,3 +1,4 @@
+import { randomInt } from 'crypto';
 import { dbRun, dbGet, dbExec, isPostgres } from '../db.ts';
 import nodemailer from 'nodemailer';
 
@@ -30,7 +31,7 @@ export async function ensureOtpTable() {
 }
 
 function generateCode(): string {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return String(randomInt(100000, 1000000));
 }
 
 export async function createOtp(target: string, type: 'phone' | 'email'): Promise<string> {
