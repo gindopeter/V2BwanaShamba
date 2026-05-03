@@ -54,7 +54,7 @@ async function handleSession(ws: WebSocket, userId: number) {
   try {
     console.log('[LiveProxy] Connecting to Gemini Live API...');
     geminiSession = await ai.live.connect({
-      model: 'gemini-2.0-flash-live-001',
+      model: 'gemini-live-2.5-flash-preview',
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } } },
@@ -138,9 +138,11 @@ async function handleSession(ws: WebSocket, userId: number) {
       const msg = JSON.parse(raw.toString());
       if (!geminiSession) return;
       if (msg.type === 'audio' && msg.data) {
-        geminiSession.sendRealtimeInput({ media: { data: msg.data, mimeType: 'audio/pcm;rate=16000' } });
+        // audio field for PCM audio data; mimeType must be 'audio/pcm;rate=16000'
+        geminiSession.sendRealtimeInput({ audio: { data: msg.data, mimeType: 'audio/pcm;rate=16000' } });
       } else if (msg.type === 'image' && msg.data) {
-        geminiSession.sendRealtimeInput({ media: { data: msg.data, mimeType: 'image/jpeg' } });
+        // media / video field for image frames
+        geminiSession.sendRealtimeInput({ video: { data: msg.data, mimeType: 'image/jpeg' } });
       }
       // keepalive messages are silently ignored
     } catch (err) {
