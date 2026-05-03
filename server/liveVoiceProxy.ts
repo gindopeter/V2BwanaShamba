@@ -54,13 +54,13 @@ async function handleSession(ws: WebSocket, userId: number) {
   try {
     console.log('[LiveProxy] Connecting to Gemini Live API...');
     geminiSession = await ai.live.connect({
-      model: 'gemini-2.0-flash-live-preview-04-09',
+      model: 'gemini-2.0-flash-live-001',
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } } },
         systemInstruction: SYSTEM_INSTRUCTION,
-        outputTranscription: {},
-        inputTranscription: {},
+        outputAudioTranscription: {},
+        inputAudioTranscription: {},
       },
       callbacks: {
         onopen: () => {
@@ -100,13 +100,19 @@ async function handleSession(ws: WebSocket, userId: number) {
           }
         },
         onerror: (error: any) => {
-          console.error('[LiveProxy] Gemini error:', error?.message || error);
-          send({ type: 'error', message: error?.message || 'Gemini Live error' });
-          if (ws.readyState === WebSocket.OPEN) ws.close();
+          const msg = error?.message || String(error) || 'Gemini Live error';
+          console.error('[LiveProxy] Gemini error:', msg);
+          send({ type: 'error', message: msg });
+          if (ws.readyState === WebSocket.OPEN) ws.close(1011, msg);
         },
         onclose: (event: any) => {
-          console.log('[LiveProxy] Gemini session closed:', event?.code, event?.reason);
-          if (ws.readyState === WebSocket.OPEN) ws.close();
+          const reason = event?.reason || `code ${event?.code ?? 'unknown'}`;
+          console.log('[LiveProxy] Gemini session closed:', reason);
+          // Only close the client socket if Gemini closed it unexpectedly (not because
+          // we already nulled geminiSession in ws.on('close'))
+          if (geminiSession !== null && ws.readyState === WebSocket.OPEN) {
+            ws.close(1000, 'Gemini session ended');
+          }
         },
       },
     });
@@ -118,6 +124,15 @@ async function handleSession(ws: WebSocket, userId: number) {
     return;
   }
 
+  // Keep the client WebSocket alive so Cloud Run doesn't drop idle connections
+  const pingInterval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      try { ws.ping(); } catch {}
+    } else {
+      clearInterval(pingInterval);
+    }
+  }, 25_000);
+
   ws.on('message', (raw: Buffer) => {
     try {
       const msg = JSON.parse(raw.toString());
@@ -127,16 +142,19 @@ async function handleSession(ws: WebSocket, userId: number) {
       } else if (msg.type === 'image' && msg.data) {
         geminiSession.sendRealtimeInput({ media: { data: msg.data, mimeType: 'image/jpeg' } });
       }
+      // keepalive messages are silently ignored
     } catch (err) {
       console.error('[LiveProxy] Error handling client message:', err);
     }
   });
 
   ws.on('close', () => {
+    clearInterval(pingInterval);
     console.log(`[LiveProxy] Client disconnected (user ${userId}), closing Gemini session`);
-    if (geminiSession) {
-      try { geminiSession.close(); } catch {}
-      geminiSession = null;
+    const session = geminiSession;
+    geminiSession = null; // null first to prevent re-entrant close from onclose callback
+    if (session) {
+      try { session.close(); } catch {}
     }
   });
 }

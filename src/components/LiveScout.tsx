@@ -78,6 +78,8 @@ export default function LiveScout() {
   const isCameraActiveRef = useRef(false);
   const speechRecognitionRef = useRef<any>(null);
   const aiJustFinishedRef = useRef(false);
+  const keepaliveIntervalRef = useRef<any>(null);
+  const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
 
   useEffect(() => { isLiveVoiceRef.current = isLiveVoice; }, [isLiveVoice]);
   useEffect(() => { mediaStreamRef.current = mediaStream; }, [mediaStream]);
@@ -95,7 +97,9 @@ export default function LiveScout() {
 
   useEffect(() => {
     return () => {
+      if (keepaliveIntervalRef.current) { clearInterval(keepaliveIntervalRef.current); keepaliveIntervalRef.current = null; }
       if (isLiveVoiceRef.current) {
+        if (audioWorkletNodeRef.current) { try { audioWorkletNodeRef.current.disconnect(); } catch {} audioWorkletNodeRef.current = null; }
         if (processorRef.current) { processorRef.current.disconnect(); processorRef.current = null; }
         if (audioStreamRef.current) { audioStreamRef.current.getTracks().forEach(t => t.stop()); audioStreamRef.current = null; }
         if (frameIntervalRef.current) { clearInterval(frameIntervalRef.current); frameIntervalRef.current = null; }
@@ -516,8 +520,8 @@ export default function LiveScout() {
     // 1. Get a short-lived one-time token from the server
     let token: string;
     try {
-      const res = await fetch('/api/chat/live-voice-token');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const res = await fetch('/api/chat/live-voice-token', { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status} — are you logged in?`);
       token = (await res.json()).token;
     } catch (err: any) {
       console.error('[LiveVoice] Token fetch failed:', err);
@@ -556,7 +560,7 @@ export default function LiveScout() {
       nextPlayTimeRef.current = startAt + buffer.duration;
     };
 
-    // 4. Capture mic and stream 16 kHz PCM to proxy
+    // 4. Capture mic and stream 16 kHz PCM to proxy via AudioWorkletNode
     const startMicCapture = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -568,32 +572,65 @@ export default function LiveScout() {
           audioContextRef.current = ctx;
           nextPlayTimeRef.current = 0;
         }
-        if (ctx.state === 'suspended') ctx.resume();
+        if (ctx.state === 'suspended') await ctx.resume();
+
+        // Build the AudioWorklet processor as an inline Blob so no extra file is needed
+        const workletCode = `
+class PCMCaptureProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this._buf = [];
+    this._target = 2048; // accumulate ~46 ms @ 44.1 kHz before posting
+  }
+  process(inputs) {
+    const ch = inputs[0]?.[0];
+    if (ch) {
+      this._buf.push(new Float32Array(ch)); // copy — input arrays are recycled
+      const total = this._buf.reduce((s, a) => s + a.length, 0);
+      if (total >= this._target) {
+        const merged = new Float32Array(total);
+        let offset = 0;
+        for (const a of this._buf) { merged.set(a, offset); offset += a.length; }
+        this.port.postMessage(merged.buffer, [merged.buffer]);
+        this._buf = [];
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('pcm-capture-processor', PCMCaptureProcessor);
+`;
+        const blob = new Blob([workletCode], { type: 'application/javascript' });
+        const workletUrl = URL.createObjectURL(blob);
+        try {
+          await ctx.audioWorklet.addModule(workletUrl);
+        } finally {
+          URL.revokeObjectURL(workletUrl);
+        }
 
         const micSource = ctx.createMediaStreamSource(stream);
-        const processor = ctx.createScriptProcessor(4096, 1, 1);
-        processorRef.current = processor;
+        const workletNode = new AudioWorkletNode(ctx, 'pcm-capture-processor');
+        audioWorkletNodeRef.current = workletNode;
 
-        // Muted gain keeps the graph active without feeding mic back to speakers
-        const muteGain = ctx.createGain();
-        muteGain.gain.value = 0;
-
-        processor.onaudioprocess = (e) => {
+        workletNode.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
           if (!isLiveVoiceRef.current || !sessionReadyRef.current) return;
           if (isAiSpeakingRef.current) return; // don't send while AI is speaking
           const wsConn = liveWsRef.current;
           if (!wsConn || wsConn.readyState !== WebSocket.OPEN) return;
-          const raw = e.inputBuffer.getChannelData(0);
+          const raw = new Float32Array(e.data);
           const pcm16k = downsample(raw, ctx!.sampleRate, 16000);
           wsConn.send(JSON.stringify({ type: 'audio', data: float32ToBase64(pcm16k) }));
         };
 
-        micSource.connect(processor);
-        processor.connect(muteGain);
+        // Muted gain node — keeps the graph active without feeding mic back to speakers
+        const muteGain = ctx.createGain();
+        muteGain.gain.value = 0;
+        micSource.connect(workletNode);
+        workletNode.connect(muteGain);
         muteGain.connect(ctx.destination);
       } catch (err: any) {
         console.error('[LiveVoice] Mic error:', err);
-        setMessages(prev => [...prev, { role: 'system', text: 'Microphone access is required for live voice.' }]);
+        setMessages(prev => [...prev, { role: 'system', text: `Microphone error: ${err.message || 'Access denied or unavailable.'}` }]);
         stopLiveVoice();
       }
     };
@@ -629,6 +666,12 @@ export default function LiveScout() {
           setMessages(prev => [...prev, { role: 'system', text: 'Live voice active. Speak to BwanaShamba in English or Kiswahili.' }]);
           startMicCapture();
           if (isCameraActiveRef.current) startCameraFrames();
+          // Keepalive: send a ping every 25 s to prevent Cloud Run from dropping the connection
+          keepaliveIntervalRef.current = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              try { ws.send(JSON.stringify({ type: 'keepalive' })); } catch {}
+            }
+          }, 25_000);
           return;
         }
 
@@ -694,8 +737,20 @@ export default function LiveScout() {
       }
     };
 
-    ws.onclose = () => {
-      if (isLiveVoiceRef.current) stopLiveVoice();
+    ws.onclose = (event) => {
+      if (keepaliveIntervalRef.current) {
+        clearInterval(keepaliveIntervalRef.current);
+        keepaliveIntervalRef.current = null;
+      }
+      if (isLiveVoiceRef.current) {
+        // Only show a separate error banner if the server closed abnormally and
+        // we haven't already shown an error message via msg.type === 'error'
+        if (event.code !== 1000 && event.code !== 1001) {
+          const reason = event.reason || `Connection closed (code ${event.code})`;
+          setMessages(prev => [...prev, { role: 'system', text: `Session ended: ${reason}` }]);
+        }
+        stopLiveVoice();
+      }
     };
   };
 
@@ -746,6 +801,14 @@ export default function LiveScout() {
     if (liveWsRef.current) {
       try { liveWsRef.current.close(); } catch {}
       liveWsRef.current = null;
+    }
+    if (keepaliveIntervalRef.current) {
+      clearInterval(keepaliveIntervalRef.current);
+      keepaliveIntervalRef.current = null;
+    }
+    if (audioWorkletNodeRef.current) {
+      try { audioWorkletNodeRef.current.disconnect(); } catch {}
+      audioWorkletNodeRef.current = null;
     }
     if (processorRef.current) {
       try { processorRef.current.disconnect(); } catch {}
