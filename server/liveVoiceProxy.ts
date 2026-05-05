@@ -62,7 +62,7 @@ async function handleSession(ws: WebSocket, userId: number) {
   try {
     console.log('[LiveProxy] Connecting to Gemini Live API...');
     geminiSession = await ai.live.connect({
-      model: 'gemini-2.0-flash-live-001',
+      model: 'gemini-3.1-flash-live-preview',
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } } },
@@ -121,8 +121,8 @@ async function handleSession(ws: WebSocket, userId: number) {
           if (geminiSession === null) return; // already handled in ws.on('close')
           if (!setupCompleted) {
             // Gemini closed before setup — surface a clear error to the client
-            console.error('[LiveProxy] Gemini closed before setupComplete — likely invalid model or auth');
-            send({ type: 'error', message: 'Gemini Live session could not start. Please try again.' });
+            console.error('[LiveProxy] Gemini closed before setupComplete. Code:', code, 'Reason:', reason);
+            send({ type: 'error', message: `Voice session could not start: ${reason}. Please try again.` });
           }
           if (ws.readyState === WebSocket.OPEN) {
             ws.close(setupCompleted ? 1000 : 1011, 'Gemini session ended');
