@@ -8,11 +8,12 @@ import { setupLiveVoiceProxy } from './server/liveVoiceProxy.ts';
 
 import { GoogleGenAI } from '@google/genai';
 import rateLimit from 'express-rate-limit';
-import { initDatabase, isPostgres, getSqliteDb, getPgPool, dbAll, dbGet } from './server/db.ts';
+import { initDatabase, isPostgres, getSqliteDb, getPgPool, dbAll, dbGet, dbRun } from './server/db.ts';
 import { isAuthenticated } from './server/middleware/auth.ts';
 import { TANZANIA_REGIONS } from './server/constants/regions.ts';
 import { TANZANIA_DISTRICT_COORDS } from './server/constants/district_coords.ts';
 import { getDaysToHarvest, getGrowthStage } from './server/constants/crops.ts';
+import { generateAndSavePlan, computeStatus, type StoredMilestone } from './server/services/planning.ts';
 
 import authRoutes from './server/routes/auth.ts';
 import zoneRoutes from './server/routes/zones.ts';
@@ -58,10 +59,10 @@ async function startServer() {
   const app = express();
   const port = process.env.PORT || 5000;
 
-  // Large limit only for authenticated image-upload endpoints; guest endpoint gets 1mb
+  // Chat endpoints accept images — allow up to 20mb
   app.use('/api/chat/analyze-crop', express.json({ limit: '20mb' }));
-  app.use('/api/chat', express.json({ limit: '1mb' }));
-  app.use('/api/chat', express.urlencoded({ extended: true, limit: '1mb' }));
+  app.use('/api/chat', express.json({ limit: '20mb' }));
+  app.use('/api/chat', express.urlencoded({ extended: true, limit: '20mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
@@ -333,6 +334,152 @@ Jibu kwa JSON tu, bila markdown:
     } catch (err: any) {
       console.error('[recommendations] error:', err.message);
       res.status(500).json({ recommendations: [] });
+    }
+  });
+
+  // ── GET /api/planning ─────────────────────────────────────────────────────
+  // Returns stored plans from DB. Generates missing ones on-the-fly.
+  app.get('/api/planning', isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const lang = (req.query.lang as string) === 'sw' ? 'sw' : 'en';
+
+      const [userProfile, zones] = await Promise.all([
+        dbGet('SELECT first_name, region, district FROM users WHERE id = ?', userId),
+        dbAll(
+          `SELECT id, name, crop_type, area_size, planting_date
+           FROM zones WHERE user_id = ? AND status IN ('Active','Harvested')
+           ORDER BY planting_date ASC`,
+          userId
+        ),
+      ]);
+
+      if (!zones || zones.length === 0) return res.json({ plans: [] });
+
+      const location = [
+        userProfile?.district ? `${userProfile.district} District` : null,
+        userProfile?.region   ? `${userProfile.region} Region`     : null,
+        'Tanzania',
+      ].filter(Boolean).join(', ');
+
+      // Enrich zones with computed harvest date
+      const enriched = (zones as any[]).map(z => {
+        const planted = new Date(z.planting_date);
+        const harvest = new Date(planted);
+        harvest.setDate(harvest.getDate() + getDaysToHarvest(z.crop_type));
+        return { ...z, expected_harvest_date: harvest.toISOString().split('T')[0] };
+      });
+
+      // Fetch stored plans
+      const storedPlans = await dbAll(
+        'SELECT zone_id, milestones, lang, generated_at FROM zone_plans WHERE user_id = ?',
+        userId
+      );
+      const plansByZoneId: Record<number, any> = {};
+      (storedPlans as any[]).forEach(p => { plansByZoneId[p.zone_id] = p; });
+
+      // For zones without a stored plan, generate one async (fire-and-forget)
+      const missing = enriched.filter(z => !plansByZoneId[z.id]);
+      if (missing.length > 0) {
+        missing.forEach(z => {
+          generateAndSavePlan(
+            { id: z.id, user_id: userId, name: z.name, crop_type: z.crop_type, planting_date: z.planting_date, area_size: z.area_size },
+            location, lang
+          ).catch(err => console.error('[planning] bg generate failed:', err.message));
+        });
+      }
+
+      const today = new Date();
+      const plans = enriched
+        .filter(z => plansByZoneId[z.id])  // only return zones with stored plans
+        .map(z => {
+          const stored = plansByZoneId[z.id];
+          const milestones = (JSON.parse(stored.milestones) as StoredMilestone[]).map(ms => ({
+            ...ms,
+            status: computeStatus(ms, today),
+          }));
+          return {
+            zone_id: z.id,
+            zone_name: z.name,
+            crop_type: z.crop_type,
+            planting_date: z.planting_date,
+            harvest_date: z.expected_harvest_date,
+            area_size: z.area_size,
+            generated_at: stored.generated_at,
+            milestones,
+          };
+        });
+
+      res.json({ plans });
+    } catch (err: any) {
+      console.error('[planning] GET error:', err.message);
+      res.status(500).json({ plans: [] });
+    }
+  });
+
+  // ── POST /api/planning/regenerate ─────────────────────────────────────────
+  // Force re-generates plans for all (or a specific) zone
+  app.post('/api/planning/regenerate', isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const lang   = (req.body?.lang as string) === 'sw' ? 'sw' : 'en';
+      const zoneId = req.body?.zone_id ? Number(req.body.zone_id) : null;
+
+      const [userProfile, zones] = await Promise.all([
+        dbGet('SELECT region, district FROM users WHERE id = ?', userId),
+        zoneId
+          ? dbAll('SELECT id, name, crop_type, area_size, planting_date FROM zones WHERE id = ? AND user_id = ?', zoneId, userId)
+          : dbAll("SELECT id, name, crop_type, area_size, planting_date FROM zones WHERE user_id = ? AND status IN ('Active','Harvested')", userId),
+      ]);
+
+      if (!zones || zones.length === 0) return res.json({ success: true, count: 0 });
+
+      const location = [
+        userProfile?.district ? `${userProfile.district} District` : null,
+        userProfile?.region   ? `${userProfile.region} Region`     : null,
+        'Tanzania',
+      ].filter(Boolean).join(', ');
+
+      await Promise.all((zones as any[]).map(z =>
+        generateAndSavePlan({ ...z, user_id: userId }, location, lang)
+      ));
+
+      res.json({ success: true, count: zones.length });
+    } catch (err: any) {
+      console.error('[planning] regenerate error:', err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── PATCH /api/planning/:zoneId/milestone/:idx ────────────────────────────
+  // Toggle a milestone's completed flag
+  app.patch('/api/planning/:zoneId/milestone/:idx', isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const zoneId = Number(req.params.zoneId);
+      const idx    = Number(req.params.idx);
+      const { completed } = req.body;
+
+      const plan = await dbGet(
+        'SELECT milestones FROM zone_plans WHERE zone_id = ? AND user_id = ?',
+        zoneId, userId
+      );
+      if (!plan) return res.status(404).json({ message: 'Plan not found' });
+
+      const milestones: StoredMilestone[] = JSON.parse(plan.milestones);
+      if (idx < 0 || idx >= milestones.length) return res.status(400).json({ message: 'Invalid milestone index' });
+
+      milestones[idx].completed = !!completed;
+
+      await dbRun(
+        'UPDATE zone_plans SET milestones = ? WHERE zone_id = ? AND user_id = ?',
+        JSON.stringify(milestones), zoneId, userId
+      );
+
+      res.json({ success: true, milestone: milestones[idx] });
+    } catch (err: any) {
+      console.error('[planning] PATCH milestone error:', err.message);
+      res.status(500).json({ message: err.message });
     }
   });
 

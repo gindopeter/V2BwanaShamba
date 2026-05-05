@@ -1,1 +1,9 @@
 @import "tailwindcss";
+
+/* Chat input — keep placeholder on a single line so it doesn't peek
+   below the collapsed 36px textarea height */
+textarea.chat-input::placeholder {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

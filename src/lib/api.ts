@@ -8,7 +8,6 @@ export interface Zone {
   current_growth_day: number;
   expected_yield_kg: number;
   actual_yield_kg: number;
-  irrigation_status: 'Off' | 'Running';
   expected_harvest_date: string;
   next_fertigation_date: string | null;
 }
@@ -18,7 +17,7 @@ export interface Task {
   zone_id: number;
   zone_name: string;
   crop_type: string;
-  task_type: 'Irrigation' | 'Fertigation' | 'Scouting';
+  task_type: 'Fertigation' | 'Scouting';
   scheduled_time: string;
   duration_minutes: number;
   status: 'Pending' | 'Confirmed' | 'Completed' | 'Missed';
@@ -51,13 +50,6 @@ export async function updateZoneYield(id: number, actual_yield_kg: number) {
   });
 }
 
-export async function toggleIrrigation(id: number, status: 'Running' | 'Off') {
-  await fetch(`/api/zones/${id}/irrigation`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
-  });
-}
 
 export async function runEngineChecks() {
   const res = await fetch('/api/engine/run-checks', { method: 'POST' });

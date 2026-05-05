@@ -40,7 +40,13 @@ interface Conversation {
   updated_at: string;
 }
 
-export default function LiveScout() {
+export default function LiveScout({
+  initialMessage,
+  onInitialMessageConsumed,
+}: {
+  initialMessage?: string;
+  onInitialMessageConsumed?: () => void;
+} = {}) {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isLiveVoice, setIsLiveVoice] = useState(false);
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
@@ -110,15 +116,40 @@ export default function LiveScout() {
   }, []);
 
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px';
+    const ta = textareaRef.current;
+    if (!ta) return;
+    if (!inputText) {
+      // Empty — slim single line, hide overflow so placeholder doesn't wrap visibly
+      ta.style.height = '36px';
+      ta.style.overflowY = 'hidden';
+    } else {
+      // Has content — grow to fit, enable scroll at max height
+      ta.style.overflowY = 'hidden';
+      ta.style.height = 'auto';
+      const next = Math.min(ta.scrollHeight, 160);
+      ta.style.height = next + 'px';
+      ta.style.overflowY = next >= 160 ? 'auto' : 'hidden';
     }
   }, [inputText]);
 
   useEffect(() => {
+    const miniConvId = sessionStorage.getItem('bwana_mini_conv_id');
+    if (miniConvId) {
+      sessionStorage.removeItem('bwana_mini_conv_id');
+      loadConversation(Number(miniConvId));
+    }
     loadConversations();
   }, []);
+
+  // Auto-send a pre-filled message (e.g. from "Learn more" on a recommendation)
+  useEffect(() => {
+    if (!initialMessage) return;
+    const timer = setTimeout(() => {
+      handleSendTextRef.current(initialMessage);
+      onInitialMessageConsumed?.();
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [initialMessage]);
 
   const loadConversations = async () => {
     try {
@@ -159,6 +190,8 @@ export default function LiveScout() {
     setMessages([]);
     setInputText('');
     setUploadedMedia(null);
+    setIsSidebarOpen(false);
+    loadConversations();
   };
 
   const deleteConversation = async (convId: number, e: React.MouseEvent) => {
@@ -290,18 +323,85 @@ export default function LiveScout() {
     });
   };
 
+  // Compress an image data-URL to JPEG, max 1024px on the longest side, 80% quality.
+  // Resolves with the compressed data URL, or the original as fallback.
+  // Never hangs: errors inside onload are caught, and a 10 s timeout is the final guard.
+  const compressImage = (dataUrl: string): Promise<string> =>
+    new Promise((resolve) => {
+      let settled = false;
+      const done = (result: string) => { if (!settled) { settled = true; resolve(result); } };
+
+      // Safety net: resolve with original after 10 s to prevent infinite hang
+      const timer = setTimeout(() => done(dataUrl), 10_000);
+
+      const img = new Image();
+      img.onload = () => {
+        clearTimeout(timer);
+        try {
+          const MAX = 1024;
+          let { width, height } = img;
+          if (width > MAX || height > MAX) {
+            if (width > height) { height = Math.round((height / width) * MAX); width = MAX; }
+            else { width = Math.round((width / height) * MAX); height = MAX; }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) { done(dataUrl); return; }
+          ctx.drawImage(img, 0, 0, width, height);
+          done(canvas.toDataURL('image/jpeg', 0.8));
+        } catch {
+          done(dataUrl); // fallback: use original
+        }
+      };
+      img.onerror = () => { clearTimeout(timer); done(dataUrl); };
+      img.src = dataUrl;
+    });
+
   const handleSendText = async (overrideText?: string) => {
     const textToSend = overrideText || inputText;
 
-    let imageData = uploadedMedia ? uploadedMedia.split(',')[1] : undefined;
+    // Snapshot state NOW before any async work or state mutations
+    const mediaAtSend = uploadedMedia;
+    const mediaTypeAtSend = uploadedMediaType;
+
+    if (!textToSend.trim() && !mediaAtSend && !isCameraActive) return;
+
+    const messageText = textToSend.trim()
+      || (mediaAtSend ? 'Analyze this image and tell me what you see. Check for pests, diseases, or any issues.' : '');
+
+    const userMsg = {
+      role: 'user',
+      text: messageText,
+      image: mediaAtSend && mediaTypeAtSend === 'image' ? mediaAtSend : undefined,
+    };
+
+    // ── Show user message in UI immediately — before any async work ──────────
+    setMessages(prev => [...prev, userMsg]);
+    setInputText('');
+    setUploadedMedia(null);
+    setIsProcessing(true);
+
+    // ── Now resolve image data (async, but UI already updated) ──────────────
+    let imageData: string | undefined;
     let mimeType = 'image/jpeg';
 
-    if (uploadedMedia && uploadedMediaType === 'image') {
-      const match = uploadedMedia.match(/^data:([^;]+);/);
-      if (match) mimeType = match[1];
+    if (mediaAtSend && mediaTypeAtSend === 'image') {
+      try {
+        const compressed = await compressImage(mediaAtSend);
+        imageData = compressed.split(',')[1];
+        mimeType = 'image/jpeg';
+      } catch {
+        // Last-resort: strip the data URL prefix and send raw
+        const comma = mediaAtSend.indexOf(',');
+        if (comma !== -1) {
+          imageData = mediaAtSend.slice(comma + 1);
+          mimeType = mediaAtSend.slice(5, mediaAtSend.indexOf(';')) || 'image/jpeg';
+        }
+      }
     }
 
-    if (uploadedMedia && uploadedMediaType === 'video') {
+    if (mediaAtSend && mediaTypeAtSend === 'video') {
       imageData = extractVideoFrame();
       mimeType = 'image/jpeg';
     }
@@ -313,24 +413,6 @@ export default function LiveScout() {
         mimeType = 'image/jpeg';
       }
     }
-
-    if (!textToSend.trim() && !imageData && !isCameraActive) return;
-
-    const messageText = textToSend.trim()
-      || (imageData ? 'Analyze this image and tell me what you see. Check for pests, diseases, or any issues.' : '');
-
-    const userMsg = {
-      role: 'user',
-      text: messageText,
-      image: uploadedMedia && uploadedMediaType === 'image'
-        ? uploadedMedia
-        : (imageData ? `data:image/jpeg;base64,${imageData}` : undefined)
-    };
-
-    setMessages(prev => [...prev, userMsg]);
-    setInputText('');
-    setUploadedMedia(null);
-    setIsProcessing(true);
 
     try {
       const body: any = {
@@ -842,15 +924,15 @@ registerProcessor('pcm-capture-processor', PCMCaptureProcessor);
   };
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] max-h-[900px]">
+    <div className="flex h-[calc(100dvh-52px)] lg:h-dvh overflow-hidden">
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/20 z-30 lg:hidden"
+          className="fixed inset-0 bg-black/20 z-[60] lg:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
-      <div className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:relative z-40 lg:z-auto w-64 h-full bg-white border-r border-[#002c11]/8 flex flex-col transition-transform duration-200`}>
+      <div className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:relative z-[70] lg:z-auto w-64 h-full bg-white border-r border-[#002c11]/8 flex flex-col transition-transform duration-200`}>
         <div className="p-3 border-b border-[#002c11]/8">
           <button
             onClick={startNewConversation}
@@ -906,14 +988,16 @@ registerProcessor('pcm-capture-processor', PCMCaptureProcessor);
           />
         )}
 
-        <div className="flex items-center gap-2 px-4 py-2 lg:hidden">
-          <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="p-2 text-[#5d6c7b]/60 hover:text-[#002c11] hover:bg-[#002c11]/5 rounded-lg transition-colors"
-          >
-            {isSidebarOpen ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-          </button>
-          <span className="text-xs text-[#5d6c7b]/50">History</span>
+        <div className={`flex items-center justify-between px-4 py-2 lg:hidden border-b border-[#002c11]/[0.06] relative z-[40] transition-opacity duration-200 ${isSidebarOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="w-11 h-11 flex items-center justify-center text-[#5d6c7b]/60 hover:text-[#002c11] hover:bg-[#002c11]/5 rounded-lg transition-colors touch-manipulation"
+            >
+              {isSidebarOpen ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+            </button>
+            <span className="text-xs font-bold text-[#5d6c7b]/60">History</span>
+          </div>
         </div>
 
         {isCameraActive && (
@@ -953,23 +1037,8 @@ registerProcessor('pcm-capture-processor', PCMCaptureProcessor);
           </div>
         )}
 
-        {uploadedMedia && !isCameraActive && (
-          <div className="relative w-full max-h-48 bg-black rounded-xl overflow-hidden mb-4 mx-4 shrink-0" style={{ width: 'calc(100% - 2rem)' }}>
-            {uploadedMediaType === 'video' ? (
-              <video ref={uploadedVideoRef} src={uploadedMedia} controls className="w-full max-h-48 object-contain" />
-            ) : (
-              <img src={uploadedMedia} className="w-full max-h-48 object-contain" alt="Upload preview" />
-            )}
-            <button
-              onClick={() => setUploadedMedia(null)}
-              className="absolute top-3 right-3 p-1.5 bg-black/50 hover:bg-black/70 text-white rounded-lg backdrop-blur-sm transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto min-h-0">
           {!hasMessages ? (
             <div className="h-full flex flex-col items-center justify-center text-center px-6">
               <div className="w-12 h-12 rounded-2xl bg-[#035925]/10 flex items-center justify-center mb-5">
@@ -982,23 +1051,6 @@ registerProcessor('pcm-capture-processor', PCMCaptureProcessor);
                 Ask me about your farm, upload a crop photo for analysis, or start a live voice conversation.
               </p>
 
-              <div className="grid grid-cols-2 gap-3 mt-8 w-full max-w-md">
-                {[
-                  { text: 'Check irrigation schedule for Zone A', icon: '💧' },
-                  { text: 'When should I harvest my tomatoes?', icon: '🍅' },
-                  { text: 'Angalia hali ya maji Zone B', icon: '🌊' },
-                  { text: 'Wadudu gani naweze kutarajia?', icon: '🐛' },
-                ].map((suggestion) => (
-                  <button
-                    key={suggestion.text}
-                    onClick={() => handleSendText(suggestion.text)}
-                    className="text-left p-3 rounded-xl border border-[#002c11]/8 bg-white hover:bg-[#035925]/5 hover:border-[#035925]/20 transition-all text-[12px] text-[#002c11]/70 leading-snug group"
-                  >
-                    <span className="text-base mb-1 block">{suggestion.icon}</span>
-                    {suggestion.text}
-                  </button>
-                ))}
-              </div>
             </div>
           ) : (
             <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
@@ -1054,36 +1106,75 @@ registerProcessor('pcm-capture-processor', PCMCaptureProcessor);
           )}
         </div>
 
-        <div className="shrink-0 px-4 pb-4 pt-2">
+        <div className="shrink-0 px-4 pt-2" style={{ paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))' }}>
           <div className="max-w-2xl mx-auto">
-            <div className="bg-white border border-[#002c11]/10 rounded-2xl shadow-sm focus-within:border-[#035925]/30 focus-within:shadow-md transition-all">
-              <div className="flex items-end gap-2 p-3">
-                <div className="flex items-center gap-1 shrink-0 pb-0.5">
+            <div className="bg-white border border-[#002c11]/10 rounded-2xl shadow-sm focus-within:border-[#035925]/30 focus-within:shadow-md transition-all overflow-hidden">
+              {/* Image attachment preview chip — inside the input box */}
+              {uploadedMedia && uploadedMediaType === 'image' && !isCameraActive && (
+                <div className="flex items-center gap-2 px-3 pt-2 pb-1">
+                  <div className="relative inline-flex items-center gap-2 bg-[#f9f6f1] border border-[#002c11]/10 rounded-xl px-2 py-1.5 max-w-[200px]">
+                    <img
+                      src={uploadedMedia}
+                      alt="Attached"
+                      className="w-8 h-8 rounded-lg object-cover shrink-0"
+                    />
+                    <span className="text-[11px] text-[#5d6c7b] font-medium truncate">Image attached</span>
+                    <button
+                      type="button"
+                      onClick={() => setUploadedMedia(null)}
+                      className="shrink-0 w-4 h-4 flex items-center justify-center rounded-full bg-[#002c11]/10 hover:bg-red-100 text-[#5d6c7b] hover:text-red-500 transition-colors"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+              {uploadedMedia && uploadedMediaType === 'video' && !isCameraActive && (
+                <div className="flex items-center gap-2 px-3 pt-2 pb-1">
+                  <div className="relative inline-flex items-center gap-2 bg-[#f9f6f1] border border-[#002c11]/10 rounded-xl px-2 py-1.5">
+                    <span className="text-base">🎬</span>
+                    <span className="text-[11px] text-[#5d6c7b] font-medium">Video attached</span>
+                    <button
+                      type="button"
+                      onClick={() => setUploadedMedia(null)}
+                      className="shrink-0 w-4 h-4 flex items-center justify-center rounded-full bg-[#002c11]/10 hover:bg-red-100 text-[#5d6c7b] hover:text-red-500 transition-colors"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-end gap-1.5 px-3 py-2">
+                {/* Left: attach + camera */}
+                <div className="flex items-center gap-0.5 shrink-0 mb-0.5">
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="p-2 text-[#5d6c7b]/60 hover:text-[#002c11] hover:bg-[#002c11]/5 rounded-lg transition-colors"
-                    title="Upload image or video"
+                    className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors touch-manipulation ${uploadedMedia ? 'text-[#035925] bg-[#035925]/10' : 'text-[#5d6c7b]/50 hover:text-[#002c11] hover:bg-[#002c11]/5'}`}
+                    title="Attach image"
                     type="button"
                   >
-                    <Paperclip className="w-5 h-5" />
+                    <Paperclip className="w-4 h-4" />
                   </button>
                   <button
                     onClick={toggleCamera}
-                    className={`p-2 rounded-lg transition-colors ${isCameraActive ? 'text-red-500 bg-red-50' : 'text-[#5d6c7b]/60 hover:text-[#002c11] hover:bg-[#002c11]/5'}`}
+                    className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors touch-manipulation ${isCameraActive ? 'text-red-500 bg-red-50' : 'text-[#5d6c7b]/50 hover:text-[#002c11] hover:bg-[#002c11]/5'}`}
                     title={isCameraActive ? 'Stop camera' : 'Start camera'}
                     type="button"
                   >
-                    <Camera className="w-5 h-5" />
+                    <Camera className="w-4 h-4" />
                   </button>
                   <input
                     type="file"
                     ref={fileInputRef}
                     className="hidden"
-                    accept="image/*,video/*"
+                    accept="image/*"
+                    capture={undefined}
                     onChange={handleFileUpload}
                   />
                 </div>
 
+                {/* Textarea — starts single-line, grows as user types */}
                 <textarea
                   ref={textareaRef}
                   value={inputText}
@@ -1094,28 +1185,30 @@ registerProcessor('pcm-capture-processor', PCMCaptureProcessor);
                       handleSendText();
                     }
                   }}
-                  placeholder="Ask BwanaShamba anything..."
+                  placeholder={uploadedMedia ? 'Add a message (optional)…' : 'Ask BwanaShamba…'}
                   rows={1}
-                  className="flex-1 resize-none bg-transparent text-[#002c11] text-[14px] leading-relaxed placeholder-[#5d6c7b]/40 focus:outline-none py-2 max-h-[200px]"
+                  style={{ height: 36, overflowY: 'hidden' }}
+                  className="chat-input flex-1 resize-none bg-transparent text-[#002c11] text-[16px] leading-snug placeholder-[#5d6c7b]/40 focus:outline-none py-1.5 max-h-[160px]"
                   disabled={isLiveVoice || isProcessing}
                 />
 
-                <div className="flex items-center gap-1 shrink-0 pb-0.5">
+                {/* Right: mic + send */}
+                <div className="flex items-center gap-0.5 shrink-0 mb-0.5">
                   <button
                     onClick={isLiveVoice ? stopLiveVoice : startLiveVoice}
-                    className={`p-2 rounded-lg transition-colors ${isLiveVoice ? 'text-red-500 bg-red-50 animate-pulse' : 'text-[#5d6c7b]/60 hover:text-[#002c11] hover:bg-[#002c11]/5'}`}
+                    className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors touch-manipulation ${isLiveVoice ? 'text-red-500 bg-red-50 animate-pulse' : 'text-[#5d6c7b]/50 hover:text-[#002c11] hover:bg-[#002c11]/5'}`}
                     title={isLiveVoice ? 'End live voice' : 'Start live voice'}
                     type="button"
                   >
-                    {isLiveVoice ? <Square className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                    {isLiveVoice ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                   </button>
                   <button
                     onClick={() => handleSendText()}
                     disabled={isLiveVoice || isProcessing || (!inputText.trim() && !uploadedMedia && !isCameraActive)}
-                    className="p-2 bg-[#035925] text-white rounded-lg hover:bg-[#002c11] disabled:opacity-30 disabled:hover:bg-[#035925] transition-colors"
+                    className="w-9 h-9 flex items-center justify-center bg-[#035925] text-white rounded-xl hover:bg-[#002c11] disabled:opacity-30 disabled:hover:bg-[#035925] transition-colors touch-manipulation"
                     type="button"
                   >
-                    <ArrowUp className="w-5 h-5" />
+                    <ArrowUp className="w-4 h-4" />
                   </button>
                 </div>
               </div>

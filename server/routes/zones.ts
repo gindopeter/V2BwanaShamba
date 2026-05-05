@@ -7,6 +7,7 @@ import {
   getGrowthStage,
   getYieldPerAcre,
 } from '../constants/crops.ts';
+import { generateAndSavePlan } from '../services/planning.ts';
 
 const router = Router();
 
@@ -118,6 +119,19 @@ router.post('/', isAuthenticated, async (req, res) => {
     );
 
     res.status(201).json({ id: info.lastInsertRowid, expected_yield_kg: expectedYieldKg });
+
+    // Fire-and-forget: generate crop plan for the new zone
+    const userProfile = await dbGet('SELECT region, district FROM users WHERE id = ?', userId) as any;
+    const location = [
+      userProfile?.district ? `${userProfile.district} District` : null,
+      userProfile?.region   ? `${userProfile.region} Region`     : null,
+      'Tanzania',
+    ].filter(Boolean).join(', ');
+    generateAndSavePlan(
+      { id: Number(info.lastInsertRowid), user_id: userId, name: name.trim(), crop_type, planting_date, area_size: parsedArea },
+      location,
+      'en'  // default; user can regenerate in their preferred language
+    ).catch(err => console.error('[planning] Auto-generate failed for new zone:', err.message));
   } catch (err: any) {
     console.error('[zones] POST error:', err.message);
     res.status(500).json({ message: 'Internal server error' });
@@ -213,6 +227,7 @@ router.delete('/:id', isAuthenticated, async (req, res) => {
 
     await dbRun('DELETE FROM tasks WHERE zone_id = ?', Number(id));
     await dbRun('DELETE FROM logs WHERE zone_id = ?', Number(id));
+    await dbRun('DELETE FROM zone_plans WHERE zone_id = ?', Number(id));
     await dbRun('DELETE FROM zones WHERE id = ?', Number(id));
 
     res.json({ success: true });
@@ -258,40 +273,5 @@ router.patch('/:id/yield', isAuthenticated, async (req, res) => {
   }
 });
 
-// ─── POST /api/zones/:id/irrigation ───────────────────────────────────────────
-// Ownership check enforced
-router.post('/:id/irrigation', isAuthenticated, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.session.userId!;
-    const { status } = req.body;
-
-    if (!['Running', 'Off'].includes(status)) {
-      return res.status(400).json({ error: "status must be 'Running' or 'Off'" });
-    }
-
-    const zone = await dbGet(
-      'SELECT id FROM zones WHERE id = ? AND user_id = ?',
-      Number(id),
-      userId
-    );
-    if (!zone) {
-      return res.status(404).json({ message: 'Zone not found or access denied' });
-    }
-
-    await dbRun('UPDATE zones SET irrigation_status = ? WHERE id = ?', status, Number(id));
-    await dbRun(
-      'INSERT INTO logs (zone_id, message, severity) VALUES (?, ?, ?)',
-      Number(id),
-      `Irrigation turned ${status}`,
-      'Info'
-    );
-
-    res.json({ success: true, status });
-  } catch (err: any) {
-    console.error('[zones] irrigation error:', err.message);
-    res.status(500).json({ message: 'Internal server error' });
-  }
-});
 
 export default router;

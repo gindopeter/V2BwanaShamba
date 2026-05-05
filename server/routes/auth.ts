@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { dbAll, dbGet, dbRun, isPostgres, getSqliteDb, getPgPool } from '../db.ts';
 import { isAuthenticated, isAdmin } from '../middleware/auth.ts';
 import { createOtp, verifyOtp, sendSmsOtp, sendEmailOtp, ensureOtpTable } from '../services/otp.ts';
@@ -10,7 +10,7 @@ const otpRateLimit = rateLimit({
   max: 5,
   keyGenerator: (req) => {
     const { phone_number, email } = req.body || {};
-    return (phone_number || email || req.ip || 'unknown').toString().toLowerCase();
+    return (phone_number || email || ipKeyGenerator(req) || 'unknown').toString().toLowerCase();
   },
   message: { message: 'Too many verification attempts. Please wait 10 minutes.' },
   standardHeaders: true,

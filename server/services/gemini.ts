@@ -103,6 +103,10 @@ Fertigation tip: schedule on dry days with rain chance <30% and wind <25km/h, ea
  * Builds a snapshot of the current farm state to inject into AI prompts.
  */
 export async function getFarmContext(userId?: number): Promise<string> {
+  const profile = userId
+    ? await dbGet('SELECT first_name, last_name, region, district, farm_size_acres FROM users WHERE id = ?', userId)
+    : null;
+
   const zones = userId
     ? await dbAll('SELECT * FROM zones WHERE user_id = ?', userId)
     : await dbAll('SELECT * FROM zones');
@@ -116,14 +120,21 @@ export async function getFarmContext(userId?: number): Promise<string> {
       );
   const logs = userId
     ? await dbAll(
-        'SELECT l.*, z.name as zone_name FROM logs l LEFT JOIN zones z ON l.zone_id = z.id WHERE z.user_id = ? ORDER BY l.timestamp DESC LIMIT 10',
+        'SELECT l.*, z.name as zone_name FROM logs l LEFT JOIN zones z ON l.zone_id = z.id WHERE z.user_id = ? ORDER BY l.timestamp DESC LIMIT 30',
         userId
       )
     : await dbAll(
-        'SELECT l.*, z.name as zone_name FROM logs l LEFT JOIN zones z ON l.zone_id = z.id ORDER BY l.timestamp DESC LIMIT 10'
+        'SELECT l.*, z.name as zone_name FROM logs l LEFT JOIN zones z ON l.zone_id = z.id ORDER BY l.timestamp DESC LIMIT 30'
       );
 
   const today = new Date();
+
+  const farmerName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || 'Unknown';
+  const location = [
+    profile?.district ? `${profile.district} District` : null,
+    profile?.region ? `${profile.region} Region` : null,
+    'Tanzania',
+  ].filter(Boolean).join(', ');
 
   const zoneDetails = zones
     .map((z: any) => {
@@ -131,7 +142,7 @@ export async function getFarmContext(userId?: number): Promise<string> {
       const growthDay = Math.ceil(Math.abs(today.getTime() - plantingDate.getTime()) / 86400000);
       const maxDays = getDaysToHarvest(z.crop_type);
       const stage = getGrowthStage(growthDay, maxDays);
-      return `- ${z.name}: ${z.crop_type}, ${z.area_size} acres, planted ${z.planting_date}, day ${growthDay}/${maxDays} (${stage} stage), irrigation: ${z.irrigation_status}, status: ${z.status}, expected yield: ${z.expected_yield_kg}kg, actual yield: ${z.actual_yield_kg}kg`;
+      return `- ${z.name}: ${z.crop_type}, ${z.area_size} acres, planted ${z.planting_date}, day ${growthDay}/${maxDays} (${stage} stage), status: ${z.status}, expected yield: ${z.expected_yield_kg}kg, actual yield: ${z.actual_yield_kg}kg`;
     })
     .join('\n');
 
@@ -143,17 +154,25 @@ export async function getFarmContext(userId?: number): Promise<string> {
     .map((l: any) => `- [${l.severity}] ${l.zone_name || 'System'}: ${l.message} (${l.timestamp})`)
     .join('\n');
 
+  const cropSummary = zones.length > 0
+    ? [...new Set(zones.map((z: any) => z.crop_type))].join(', ')
+    : 'None';
+
   return `
 === CURRENT FARM DATA ===
 Date: ${today.toISOString().split('T')[0]}
+Farmer: ${farmerName}
+Location: ${location}
+Farm Size: ${profile?.farm_size_acres ? `${profile.farm_size_acres} acres` : 'Not specified'}
+Crops Being Grown: ${cropSummary}
 
-ZONES:
+ZONES (${zones.length} total):
 ${zoneDetails || 'No zones configured'}
 
 RECENT TASKS (last 20):
 ${taskDetails || 'No tasks'}
 
-RECENT LOGS (last 10):
+ACTIVITY LOGS / REPORTS (last 30 entries):
 ${logDetails || 'No logs'}
 === END FARM DATA ===`;
 }
@@ -190,15 +209,26 @@ export async function chatViaGeminiDirect(
 
   const systemInstruction = `LANGUAGE RULE — HIGHEST PRIORITY: Look at the language of the LAST USER MESSAGE only. If it is English, your entire response MUST be in English. If it is Kiswahili, your entire response MUST be in Kiswahili. Do NOT use the conversation history to decide language — only the last message matters. Switch immediately whenever the user switches languages.
 
-You are 'BwanaShamba' (AI Farm Assistant) for a farm in Tanzania growing horticulture crops (tomatoes, onions, peppers, cabbage, spinach, cucumbers, watermelon, eggplant, carrots, lettuce, okra, green beans) and maize.
-You help farmers with questions about all these crops — soil, pest control, irrigation, fertigation, harvest timing, and market prices.
-Be concise, practical, and helpful. Use the live farm data and weather below to give specific, accurate answers.
+You are 'BwanaShamba', an AI agricultural assistant focused on Tanzania. You have deep knowledge of Tanzanian agriculture across all 26 regions — including soils, climate zones, crops, pests, diseases, irrigation, fertigation, market prices, and farming practices.
+
+CROP KNOWLEDGE: You assist with ALL crops — horticulture (vegetables, fruits), cereals (maize, rice, wheat, sorghum, millet), legumes (beans, chickpeas, cowpeas), cash crops (coffee, tea, cashew, cotton, tobacco, sisal, pyrethrum), root crops (cassava, sweet potato, Irish potato), bananas, avocado, and any other crop the farmer asks about.
+
+TANZANIA AGRICULTURE EXPERTISE:
+- You know the soil types across Tanzania (e.g. red laterite soils in Arusha/Kilimanjaro, black clay soils in Mbeya/Iringa, sandy soils in coastal regions, volcanic soils on Kilimanjaro slopes) and can analyse them using your knowledge of regional geography and satellite-based soil data.
+- You understand Tanzania's agricultural zones, rainfall patterns (unimodal vs. bimodal), and seasonal calendars.
+- You can advise on input availability, subsidies, markets (e.g. Kariakoo, regional markets), and export opportunities relevant to Tanzania.
+- When discussing soil types, climate, or agronomy for a specific Tanzanian location, draw on regional knowledge and any available satellite/remote-sensing insights.
+
+COMPARATIVE ANALYSIS: When the farmer asks to compare Tanzania's agriculture with other countries (e.g. Kenya, Ethiopia, South Africa, Netherlands), you can do so — covering productivity, practices, technology, market access, and lessons that apply to Tanzanian farmers.
+
+USER DATA: The farm data below is THIS FARMER'S actual data from the app. Always reference it when answering questions about their farm, crops, zones, tasks, yields, or activity history. If the farmer asks about their reports, logs, or performance, analyse the data provided and give specific advice.
 
 ${locationLine}
 ${weatherContext}
 ${farmContext}
 
-Current Date/Time: ${new Date().toLocaleString('en-US', { timeZone: 'Africa/Dar_es_Salaam' })} EAT`;
+Current Date/Time: ${new Date().toLocaleString('en-US', { timeZone: 'Africa/Dar_es_Salaam' })} EAT
+Be concise, practical, and specific. Prioritise advice that is immediately actionable for the farmer.`;
 
   if (image) {
     const lastContent = contents[contents.length - 1];

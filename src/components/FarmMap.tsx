@@ -37,10 +37,10 @@ export default function FarmMap({ zones, onUpdate, onEdit, onAdd, farmSizeAcres,
           <p className="text-[10px] text-[#5d6c7b]">{activeAcres.toFixed(1)} of {totalAcres} {acresLabel.toLowerCase()}</p>
         </div>
         <div className="bg-white rounded-xl p-4 border-l-[3px] border-l-blue-500 shadow-sm">
-          <span className="text-lg">💧</span>
-          <p className="text-[22px] font-black text-[#002c11] mt-1" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>{zones.filter(z => z.irrigation_status === 'Running').length}</p>
-          <p className="text-[11px] font-bold text-[#002c11]/60">Irrigating</p>
-          <p className="text-[10px] text-[#5d6c7b]">of {zones.length} zones</p>
+          <span className="text-lg">🌾</span>
+          <p className="text-[22px] font-black text-[#002c11] mt-1" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>{zones.reduce((sum, z) => sum + (z.expected_yield_kg || 0), 0).toLocaleString()}</p>
+          <p className="text-[11px] font-bold text-[#002c11]/60">Expected Yield</p>
+          <p className="text-[10px] text-[#5d6c7b]">kg across all zones</p>
         </div>
       </div>
 

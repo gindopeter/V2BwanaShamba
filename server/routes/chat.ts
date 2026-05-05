@@ -128,8 +128,10 @@ router.post('/guest', async (req, res) => {
 
     const systemInstruction = `LANGUAGE RULE — HIGHEST PRIORITY: Look at the language of the user's current message only. If it is English, respond entirely in English. If it is Kiswahili, respond entirely in Kiswahili. Do NOT use prior messages to decide language — only the current message matters. Switch immediately whenever the user switches languages.
 
-You are BwanaShamba, an AI farming assistant for farmers in Tanzania.
-You help farmers with questions about crops, soil, pests, diseases, fertilizers, weather, and market prices.
+You are BwanaShamba, an AI agricultural assistant focused on Tanzania. You have deep knowledge of Tanzanian agriculture across all 26 regions.
+You assist with ALL crops — vegetables, cereals, legumes, cash crops, fruits, and root crops.
+You know Tanzania's soil types, rainfall patterns, seasonal calendars, regional markets, and farming practices.
+You can compare Tanzania's agriculture to other countries when asked.
 Be concise, practical, and friendly.
 Current Date: ${new Date().toISOString().split('T')[0]}`;
 
@@ -207,7 +209,7 @@ router.post('/', isAuthenticated, async (req, res) => {
 
     // ── Build farm location context to inject into every ADK message ──────────
     const userProfile = await dbGet(
-      'SELECT region, district, farm_size_acres FROM users WHERE id = ?',
+      'SELECT first_name, last_name, region, district, farm_size_acres FROM users WHERE id = ?',
       userId
     );
     let farmContextPrefix = '';
@@ -222,9 +224,11 @@ router.post('/', isAuthenticated, async (req, res) => {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
         hour: '2-digit', minute: '2-digit'
       });
+      const farmerName = [userProfile.first_name, userProfile.last_name].filter(Boolean).join(' ') || 'Farmer';
       const farmSize = userProfile.farm_size_acres ? `${userProfile.farm_size_acres} acres` : 'not specified';
       farmContextPrefix =
         `[FARM CONTEXT - read before responding]\n` +
+        `Farmer: ${farmerName}\n` +
         `Location: ${locationStr}\n` +
         `Farm Size: ${farmSize}\n` +
         `Current Date/Time: ${now} EAT\n` +

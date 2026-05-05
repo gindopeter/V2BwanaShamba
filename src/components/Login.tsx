@@ -81,7 +81,7 @@ const inputStyle: React.CSSProperties = {
   outline: 0,
   padding: '0 13px',
   fontFamily: 'inherit',
-  fontSize: 13,
+  fontSize: 16,
 };
 
 export default function Login({ onLogin }: LoginProps) {
@@ -646,7 +646,7 @@ export default function Login({ onLogin }: LoginProps) {
                     onChange={e => setGuestInput(e.target.value)}
                     placeholder={t(lang, 'chatPlaceholder')}
                     disabled={guestLoading}
-                    style={{ ...inputStyle, height: 40, flex: 1, borderRadius: 11, fontSize: 12 }}
+                    style={{ ...inputStyle, height: 40, flex: 1, borderRadius: 11, fontSize: 16 }}
                   />
                   <button
                     type="submit"

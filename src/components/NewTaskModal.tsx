@@ -3,12 +3,12 @@ import { X, Loader2 } from 'lucide-react';
 import { type Language, t } from '../lib/i18n';
 
 const TASK_SUGGESTIONS = [
-  'Irrigation', 'Fertigation', 'Pest Scouting', 'Harvesting',
+  'Fertigation', 'Pest Scouting', 'Harvesting',
   'Planting', 'Weeding', 'Soil Testing', 'Pruning', 'Spraying', 'Other',
 ];
 
 const TASK_SUGGESTIONS_SW = [
-  'Umwagiliaji', 'Uwekaji Mbolea', 'Ukaguzi wa Wadudu', 'Kuvuna',
+  'Uwekaji Mbolea', 'Ukaguzi wa Wadudu', 'Kuvuna',
   'Kupanda', 'Kupalilia', 'Kupima Udongo', 'Kupogoa', 'Kunyunyizia', 'Nyingine',
 ];
 

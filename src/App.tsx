@@ -9,8 +9,10 @@ import ActionQueue from './components/ActionQueue';
 import SettingsPage from './components/SettingsPage';
 import ZoneModal from './components/ZoneModal';
 import RecommendationsBlock from './components/RecommendationsBlock';
+import Reports from './components/Reports';
+import Planning from './components/Planning';
 import { fetchZones, fetchTasks, runEngineChecks, updateTaskStatus, createZone, updateZone, deleteZone, Zone, Task } from './lib/api';
-import { RefreshCw, Plus, Loader2, ArrowLeft, MessageSquare, ChevronRight, BarChart2 } from 'lucide-react';
+import { Plus, Loader2, ArrowLeft, BarChart2 } from 'lucide-react';
 import { type Language, t } from './lib/i18n';
 
 export interface AuthUser {
@@ -26,6 +28,35 @@ export interface AuthUser {
   farm_size_acres?: number;
 }
 
+function getGreeting(lang: Language, firstName: string | null): string {
+  const hour = new Date().getHours();
+  const name = firstName || (lang === 'sw' ? 'Mkulima' : 'Farmer');
+  if (lang === 'sw') {
+    const salutation = hour >= 5 && hour < 12 ? 'Habari ya asubuhi'
+      : hour >= 12 && hour < 17 ? 'Habari za mchana'
+      : 'Habari za jioni';
+    return `${salutation}, ${name} 👋`;
+  }
+  const salutation = hour >= 5 && hour < 12 ? 'Good morning'
+    : hour >= 12 && hour < 17 ? 'Good afternoon'
+    : 'Good evening';
+  return `${salutation}, ${name} 👋`;
+}
+
+function getDateLabel(lang: Language): string {
+  return new Date().toLocaleDateString(lang === 'sw' ? 'sw-KE' : 'en-GB', {
+    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+  }).toUpperCase();
+}
+
+function weatherEmoji(condition = ''): string {
+  const l = condition.toLowerCase();
+  if (l.includes('rain') || l.includes('shower') || l.includes('mvua')) return '🌧️';
+  if (l.includes('cloud') || l.includes('wingu')) return '⛅';
+  if (l.includes('thunder') || l.includes('radi')) return '⛈️';
+  return '☀️';
+}
+
 export default function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -36,7 +67,24 @@ export default function App() {
   const [showNewTask, setShowNewTask] = useState(false);
   const [showZoneModal, setShowZoneModal] = useState(false);
   const [editingZone, setEditingZone] = useState<Zone | null>(null);
-  const [currentView, setCurrentView] = useState('dashboard');
+  const [currentView, setCurrentView] = useState<string>(() => window.location.hash.slice(1) || 'dashboard');
+  const [chatPrefill, setChatPrefill] = useState<string | null>(null);
+
+  // Keep URL hash in sync with the current view
+  const navigate = (view: string) => {
+    window.location.hash = view;
+    setCurrentView(view);
+  };
+
+  // Handle browser back / forward and manual hash edits
+  useEffect(() => {
+    const onHashChange = () => {
+      const view = window.location.hash.slice(1) || 'dashboard';
+      setCurrentView(view);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   const lang: Language = (user?.language as Language) || 'en';
 
@@ -105,13 +153,9 @@ export default function App() {
   };
 
   const handleCreateZone = async (data: { name: string; crop_type: string; planting_date: string; area_size: number }) => {
-    try {
-      await createZone(data);
-      setShowZoneModal(false);
-      loadData();
-    } catch (e) {
-      console.error("Failed to create zone", e);
-    }
+    await createZone(data);
+    setShowZoneModal(false);
+    loadData();
   };
 
   const handleUpdateZone = async (data: { name: string; crop_type: string; planting_date: string; area_size: number }) => {
@@ -180,157 +224,194 @@ export default function App() {
   };
 
   return (
-    <Layout currentView={currentView} onNavigate={setCurrentView} user={user} onLogout={handleLogout}>
-      {currentView !== 'assistant' && (
-        <div className="bg-white/80 backdrop-blur-sm border-b border-[#002c11]/5 px-6 lg:px-8 py-4 flex items-center justify-between sticky top-0 z-20">
-          <div className="flex items-center gap-3">
-            {isDetailView && (
-              <button onClick={() => setCurrentView('dashboard')} className="p-1.5 hover:bg-[#002c11]/5 rounded-lg transition-colors">
-                <ArrowLeft className="w-5 h-5 text-[#002c11]" />
-              </button>
-            )}
+    <Layout currentView={currentView} onNavigate={navigate} user={user} onLogout={handleLogout}>
+      {isDetailView && (
+        <div
+          className="px-5 lg:px-8 py-3.5 flex items-center justify-between sticky top-0 z-20"
+          style={{
+            background: 'rgba(249,246,241,0.92)',
+            backdropFilter: 'blur(12px)',
+            borderBottom: '1px solid rgba(0,44,17,0.06)',
+          }}
+        >
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => navigate('dashboard')}
+              className="p-1.5 rounded-lg transition-colors"
+              style={{ color: '#002c11' }}
+              onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,44,17,0.05)')}
+              onMouseOut={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
             <div>
-              <h2 className="text-lg font-black text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
+              <h2
+                className="text-base font-black text-[#002c11] leading-tight"
+                style={{ fontFamily: "'Instrument Sans', sans-serif" }}
+              >
                 {viewTitles[currentView] || t(lang, 'farmOverview')}
               </h2>
-              <p className="text-[11px] text-[#5d6c7b]">
+              <p className="text-[10px] text-[#5d6c7b] mt-0.5">
                 {locationLabel}{farmSizeLabel ? ` · ${farmSizeLabel}` : ''} · {zones.length} {t(lang, 'activZones')}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 bg-[#035925]/5 px-3 py-1.5 rounded-full">
-              <span className="w-2 h-2 rounded-full bg-[#035925] animate-pulse"></span>
-              <span className="text-[11px] font-bold text-[#035925]">{t(lang, 'allSystems')}</span>
-            </div>
-            {currentView === 'dashboard' && (
-              <>
-                <button
-                  onClick={loadData}
-                  className="h-9 w-9 flex items-center justify-center text-[#5d6c7b] hover:text-[#002c11] border border-[#002c11]/10 rounded-lg bg-white transition-colors"
-                >
-                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                </button>
-                <button
-                  onClick={() => setShowNewTask(true)}
-                  className="h-9 px-4 bg-[#035925] hover:bg-[#002c11] text-white rounded-lg font-bold text-xs flex items-center gap-1.5 transition-colors active:scale-[0.98]"
-                  style={{ fontFamily: "'Instrument Sans', sans-serif" }}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  {lang === 'sw' ? 'Kazi Mpya' : 'New Task'}
-                </button>
-              </>
-            )}
-          </div>
+
+          {currentView === 'tasks-detail' && (
+            <button
+              onClick={() => setShowNewTask(true)}
+              className="h-8 px-3.5 flex items-center gap-1.5 rounded-xl font-bold text-[11px] transition-all active:scale-[0.97]"
+              style={{
+                background: '#002c11',
+                color: 'white',
+                fontFamily: "'Instrument Sans', sans-serif",
+              }}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              {lang === 'sw' ? 'Kazi Mpya' : 'New Task'}
+            </button>
+          )}
         </div>
       )}
 
-      <div className={currentView === 'assistant' ? 'h-full' : 'p-6 lg:p-8 max-w-[1100px] mx-auto'}>
+      <div className={currentView === 'assistant' ? 'overflow-hidden' : 'p-6 lg:p-8 pb-28 max-w-[1100px] mx-auto'}>
         {currentView === 'dashboard' && (
           <div className="space-y-6">
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-              {[
-                {
-                  label: t(lang, 'activZones'),
-                  value: String(zones.length || '0'),
-                  sub: zones.map(z => z.crop_type).join(' · ') || (lang === 'sw' ? 'Hakuna maeneo' : 'No zones'),
-                  icon: '🌱',
-                  borderColor: '#035925',
-                  view: 'zones-detail'
-                },
-                {
-                  label: t(lang, 'pendingTasks'),
-                  value: String(pendingCount),
-                  sub: `${tasks.filter(t => t.status === 'Pending' && t.task_type === 'Scouting').length} ${lang === 'sw' ? 'ukaguzi' : 'scouting'}`,
-                  icon: '⚡',
-                  borderColor: '#fc8e44',
-                  view: 'tasks-detail'
-                },
-                {
-                  label: t(lang, 'temperature'),
-                  value: weather ? `${Math.round(weather.current?.temp || 28)}°C` : '28°C',
-                  sub: weather?.current?.condition || (lang === 'sw' ? 'Inapakia...' : 'Loading...'),
-                  icon: '☀️',
-                  borderColor: '#f5e197',
-                  view: 'weather-detail'
-                },
-              ].map((s) => (
-                <button
-                  key={s.label}
-                  onClick={() => setCurrentView(s.view)}
-                  className="bg-white rounded-xl p-4 border-l-[3px] shadow-sm text-left hover:shadow-md hover:scale-[1.02] transition-all group"
-                  style={{ borderLeftColor: s.borderColor }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-lg">{s.icon}</span>
-                    <ChevronRight className="w-4 h-4 text-[#5d6c7b]/30 group-hover:text-[#035925] transition-colors" />
-                  </div>
-                  <p className="text-[22px] font-black text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>{s.value}</p>
-                  <p className="text-[11px] font-bold text-[#002c11]/60 mt-0.5">{s.label}</p>
-                  <p className="text-[10px] text-[#5d6c7b] mt-0.5">{s.sub}</p>
-                </button>
-              ))}
+            {/* ── Personalised greeting ── */}
+            <div>
+              <p className="text-[11px] font-bold text-[#5d6c7b] uppercase tracking-[0.12em] mb-1">
+                {getDateLabel(lang)}{locationLabel ? ` · ${locationLabel}` : ''}
+              </p>
+              <h2 className="text-2xl font-black text-[#002c11] leading-tight" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
+                {getGreeting(lang, user.first_name)}
+              </h2>
             </div>
 
+            {/* ── Weather Hero ── */}
             <button
-              onClick={() => setCurrentView('assistant')}
-              className="w-full bg-gradient-to-r from-[#002c11] to-[#035925] rounded-xl p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-all group active:scale-[0.99]"
+              onClick={() => navigate('weather-detail')}
+              className="w-full rounded-2xl overflow-hidden text-left active:scale-[0.99] transition-transform"
+              style={{
+                background: 'linear-gradient(135deg, #002c11 0%, #035925 100%)',
+                boxShadow: '0 4px 20px rgba(0,44,17,0.25)',
+              }}
             >
-              <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center shrink-0 border border-white/10">
-                <MessageSquare className="w-6 h-6 text-white" />
+              <div className="p-5 relative overflow-hidden">
+                {/* Decorative circles */}
+                <div style={{ position: 'absolute', top: -20, right: -20, width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,232,107,0.06)' }} />
+                <div style={{ position: 'absolute', top: 10, right: 10, width: 60, height: 60, borderRadius: '50%', background: 'rgba(255,232,107,0.04)' }} />
+
+                <div className="flex items-center justify-between relative">
+                  <div>
+                    <p className="text-white/50 text-[10px] font-bold tracking-[0.1em] uppercase mb-1">
+                      {lang === 'sw' ? 'Hali ya Hewa Sasa' : 'Weather Now'}
+                    </p>
+                    <p
+                      className="text-white font-black leading-none"
+                      style={{ fontFamily: "'Instrument Sans', sans-serif", fontSize: 36, letterSpacing: '-0.04em' }}
+                    >
+                      {weather ? `${Math.round(weather.current?.temp ?? 28)}°C` : '—°C'}
+                    </p>
+                    <p className="text-white/60 text-xs mt-1.5">
+                      {weather?.current?.condition || (lang === 'sw' ? 'Inapakia...' : 'Loading...')}
+                      {weather?.location ? ` · ${weather.location}` : ''}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span style={{ fontSize: 44 }}>{weatherEmoji(weather?.current?.condition)}</span>
+                    <div className="flex gap-3 mt-1.5 justify-end">
+                      <span className="text-white/50 text-[10px]">
+                        💧 {weather ? Math.round(weather.current?.humidity ?? 0) : '—'}%
+                      </span>
+                      <span className="text-white/50 text-[10px]">
+                        🌬️ {weather ? Math.round(weather.current?.wind ?? 0) : '—'} km/h
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="text-left flex-1">
-                <p className="text-white font-black text-sm" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
-                  {lang === 'sw' ? 'Ongea na BwanaShamba' : 'Talk to BwanaShamba'}
-                </p>
-                <p className="text-white/50 text-xs">
-                  {lang === 'sw' ? 'Msaidizi wa AI wa shamba lako — maandishi, sauti, au kamera' : 'Talk to your AI farm assistant — text, voice, or camera'}
-                </p>
-              </div>
-              <ChevronRight className="w-5 h-5 text-white/40 group-hover:text-white/80 transition-colors shrink-0" />
             </button>
 
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-              <div className="xl:col-span-12 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-xs font-black text-[#002c11] uppercase tracking-[0.15em]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
-                      {t(lang, 'activZones')}
-                    </h3>
-                    <div className="h-[2px] w-12 bg-[#fc8e44] rounded-full"></div>
-                  </div>
-                  <button
-                    onClick={() => setCurrentView('map')}
-                    className="text-[11px] font-bold text-[#035925] hover:text-[#002c11] flex items-center gap-1 transition-colors"
+            {/* ── Pending Tasks pill ── */}
+            <button
+              onClick={() => navigate('tasks-detail')}
+              className="w-full rounded-2xl p-4 text-left flex items-center gap-3 active:scale-[0.99] transition-transform"
+              style={{
+                background: '#fffbeb',
+                border: '1.5px solid rgba(217,119,6,0.13)',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+              }}
+            >
+              <span className="text-2xl flex-shrink-0">⚡</span>
+              <p
+                className="font-black text-[#002c11] flex-shrink-0"
+                style={{ fontFamily: "'Instrument Sans', sans-serif", fontSize: 28, letterSpacing: '-0.04em', lineHeight: 1 }}
+              >
+                {pendingCount}
+              </p>
+              <div className="flex-1">
+                <p className="text-[11px] font-black text-[#d97706] uppercase tracking-[0.08em] leading-none">
+                  {t(lang, 'pendingTasks')}
+                </p>
+                <p className="text-[10px] text-[#5d6c7b] mt-0.5">
+                  {tasks.filter(t => t.status === 'Pending' && t.task_type === 'Scouting').length} {lang === 'sw' ? 'ukaguzi' : 'scouting'}
+                </p>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.5 }}>
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </button>
+
+
+            {/* ── Active Zones ── */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <h3
+                    className="text-[11px] font-black text-[#002c11] uppercase tracking-[0.15em]"
+                    style={{ fontFamily: "'Instrument Sans', sans-serif" }}
                   >
-                    {t(lang, 'viewMap')}
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
+                    {t(lang, 'activZones')}
+                  </h3>
+                  <div className="h-[2px] w-8 bg-[#fc8e44] rounded-full" />
+                </div>
+                <button
+                  onClick={() => navigate('map')}
+                  className="text-[11px] font-bold text-[#035925] hover:text-[#002c11] flex items-center gap-1 transition-colors"
+                >
+                  {t(lang, 'viewMap')} →
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {zones.slice(0, 3).map(zone => (
+                  <ZoneCard key={zone.id} zone={zone} onUpdate={loadData} lang={lang} onEdit={z => setEditingZone(z)} />
+                ))}
+                {zones.length === 0 && (
+                  <button
+                    onClick={() => setShowZoneModal(true)}
+                    className="col-span-full h-24 border-2 border-dashed border-[#035925]/20 rounded-2xl text-sm font-bold text-[#035925]/60 hover:border-[#035925]/40 hover:text-[#035925] hover:bg-[#035925]/5 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" /> {t(lang, 'addNewZone')}
                   </button>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {zones.slice(0, 3).map(zone => (
-                    <ZoneCard key={zone.id} zone={zone} onUpdate={loadData} lang={lang} onEdit={z => setEditingZone(z)} />
-                  ))}
-                  {zones.length === 0 && (
-                    <button
-                      onClick={() => setShowZoneModal(true)}
-                      className="col-span-full h-28 border-2 border-dashed border-[#035925]/20 rounded-xl text-sm font-bold text-[#035925]/60 hover:border-[#035925]/40 hover:text-[#035925] hover:bg-[#035925]/5 transition-all flex items-center justify-center gap-2"
-                    >
-                      <Plus className="w-4 h-4" /> {t(lang, 'addNewZone')}
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
             </div>
 
-            <RecommendationsBlock lang={lang} />
+            <RecommendationsBlock
+              lang={lang}
+              onLearnMore={(msg) => {
+                setChatPrefill(msg);
+                navigate('assistant');
+              }}
+            />
 
             <ActionQueue tasks={tasks} zones={zones} />
           </div>
         )}
 
         {currentView === 'tasks-detail' && (
-          <TasksDetailView tasks={todayTasks.length > 0 ? todayTasks : tasks.filter(t => t.status === 'Pending')} zones={zones} onAction={handleTaskAction} lang={lang} />
+          <TasksDetailView tasks={todayTasks.length > 0 ? todayTasks : tasks.filter(t => t.status === 'Pending')} zones={zones} onAction={handleTaskAction} onAdd={() => setShowNewTask(true)} lang={lang} />
         )}
 
         {currentView === 'zones-detail' && (
@@ -342,10 +423,23 @@ export default function App() {
         )}
 
         {currentView === 'reports' && (
-          <ReportsView zones={zones} tasks={tasks} lang={lang} />
+          <div className="p-4 lg:p-6">
+            <Reports zones={zones} lang={lang} user={user} />
+          </div>
         )}
 
-        {currentView === 'assistant' && <LiveScout />}
+        {currentView === 'planning' && (
+          <div className="p-4 lg:p-6">
+            <Planning lang={lang} />
+          </div>
+        )}
+
+        {currentView === 'assistant' && (
+          <LiveScout
+            initialMessage={chatPrefill ?? undefined}
+            onInitialMessageConsumed={() => setChatPrefill(null)}
+          />
+        )}
         {currentView === 'map' && <FarmMap zones={zones} onUpdate={loadData} onEdit={z => setEditingZone(z)} onAdd={() => setShowZoneModal(true)} farmSizeAcres={user?.farm_size_acres} lang={lang} />}
         {currentView === 'settings' && <SettingsPage user={user} onUserUpdate={(u) => setUser(u)} lang={lang} />}
 
@@ -384,7 +478,7 @@ export default function App() {
   );
 }
 
-function TasksDetailView({ tasks, zones, onAction, lang }: { tasks: Task[]; zones: Zone[]; onAction: (id: number, action: string) => void; lang: Language }) {
+function TasksDetailView({ tasks, zones, onAction, onAdd, lang }: { tasks: Task[]; zones: Zone[]; onAction: (id: number, action: string) => void; onAdd: () => void; lang: Language }) {
   return (
     <div className="space-y-4">
       {tasks.length === 0 ? (
@@ -394,7 +488,7 @@ function TasksDetailView({ tasks, zones, onAction, lang }: { tasks: Task[]; zone
       ) : (
         tasks.map(task => {
           const zone = zones.find(z => z.id === task.zone_id);
-          const emoji = task.task_type === 'Irrigation' ? '💧' : task.task_type === 'Fertigation' ? '🧪' : '🔍';
+          const emoji = task.task_type === 'Fertigation' ? '🧪' : '🔍';
           const time = new Date(task.scheduled_time);
           return (
             <div key={task.id} className="bg-white rounded-xl p-5 shadow-sm border border-[#002c11]/[0.04]">
@@ -514,128 +608,3 @@ function WeatherDetailView({ weather, lang }: { weather: any; lang: Language }) 
   );
 }
 
-function ReportsView({ zones, tasks, lang }: { zones: Zone[]; tasks: Task[]; lang: Language }) {
-  const completedTasks = tasks.filter(t => t.status === 'Completed');
-  const pendingTasks = tasks.filter(t => t.status === 'Pending');
-  const harvestedZones = zones.filter(z => z.status === 'Harvested');
-  const activeZones = zones.filter(z => z.status === 'Active');
-
-  const totalExpectedYield = zones.reduce((sum, z) => sum + (z.expected_yield_kg || 0), 0);
-  const totalActualYield = zones.reduce((sum, z) => sum + (z.actual_yield_kg || 0), 0);
-
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
-          { label: lang === 'sw' ? 'Maeneo Hai' : 'Active Zones', value: activeZones.length, icon: '🌱', color: '#035925' },
-          { label: lang === 'sw' ? 'Maeneo Yaliovunwa' : 'Harvested', value: harvestedZones.length, icon: '🌾', color: '#fc8e44' },
-          { label: lang === 'sw' ? 'Kazi Zilizokamilika' : 'Tasks Done', value: completedTasks.length, icon: '✅', color: '#0082f3' },
-          { label: lang === 'sw' ? 'Kazi Zinazosubiri' : 'Pending Tasks', value: pendingTasks.length, icon: '⏳', color: '#5d6c7b' },
-        ].map(s => (
-          <div key={s.label} className="bg-white rounded-xl p-4 shadow-sm border border-[#002c11]/[0.04] border-l-[3px]" style={{ borderLeftColor: s.color }}>
-            <span className="text-2xl block mb-2">{s.icon}</span>
-            <p className="text-2xl font-black text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>{s.value}</p>
-            <p className="text-[11px] text-[#5d6c7b] mt-0.5">{s.label}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-[#002c11]/[0.04]">
-        <h3 className="font-black text-[#002c11] mb-4 text-sm uppercase tracking-wider" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
-          {lang === 'sw' ? 'Muhtasari wa Mavuno' : 'Yield Summary'}
-        </h3>
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div>
-            <p className="text-xs text-[#5d6c7b]">{lang === 'sw' ? 'Mavuno Yanayotarajiwa' : 'Expected Yield'}</p>
-            <p className="text-2xl font-black text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
-              {totalExpectedYield.toLocaleString()} kg
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-[#5d6c7b]">{lang === 'sw' ? 'Mavuno Halisi' : 'Actual Yield'}</p>
-            <p className="text-2xl font-black text-[#035925]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
-              {totalActualYield.toLocaleString()} kg
-            </p>
-          </div>
-        </div>
-        {totalExpectedYield > 0 && (
-          <div>
-            <div className="flex justify-between text-xs text-[#5d6c7b] mb-1">
-              <span>{lang === 'sw' ? 'Utendaji' : 'Performance'}</span>
-              <span>{Math.round((totalActualYield / totalExpectedYield) * 100)}%</span>
-            </div>
-            <div className="w-full bg-[#002c11]/[0.06] h-3 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[#035925] rounded-full transition-all"
-                style={{ width: `${Math.min(100, (totalActualYield / totalExpectedYield) * 100)}%` }}
-              ></div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-[#002c11]/[0.04]">
-        <h3 className="font-black text-[#002c11] mb-4 text-sm uppercase tracking-wider" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
-          {lang === 'sw' ? 'Utendaji kwa Eneo' : 'Performance by Zone'}
-        </h3>
-        {zones.length === 0 ? (
-          <p className="text-sm text-[#5d6c7b] text-center py-4">{lang === 'sw' ? 'Hakuna maeneo bado' : 'No zones yet'}</p>
-        ) : (
-          <div className="space-y-4">
-            {zones.map(zone => {
-              const growth = zone.current_growth_day || 0;
-              const cropDays: Record<string, number> = { 'Tomato': 120, 'Onion': 150, 'Pepper': 130, 'Cabbage': 100, 'Spinach': 50, 'Cucumber': 70, 'Watermelon': 90, 'Eggplant': 130, 'Carrot': 90, 'Lettuce': 65, 'Okra': 60, 'Green Bean': 60, 'Maize': 120 };
-              const maxDays = cropDays[zone.crop_type] || 120;
-              const progress = Math.min(100, Math.round((growth / maxDays) * 100));
-              return (
-                <div key={zone.id} className="space-y-1">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <span className="text-sm font-bold text-[#002c11]">{zone.name}</span>
-                      <span className="text-xs text-[#5d6c7b] ml-2">· {zone.crop_type}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${zone.status === 'Active' ? 'bg-green-50 text-green-700' : zone.status === 'Harvested' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
-                        {zone.status}
-                      </span>
-                      <span className="text-xs text-[#5d6c7b]">{progress}%</span>
-                    </div>
-                  </div>
-                  <div className="w-full bg-[#002c11]/[0.06] h-2 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#035925] rounded-full transition-all" style={{ width: `${progress}%` }}></div>
-                  </div>
-                  <div className="flex justify-between text-[10px] text-[#5d6c7b]">
-                    <span>{lang === 'sw' ? 'Siku' : 'Day'} {growth}/{maxDays}</span>
-                    {zone.actual_yield_kg > 0 && <span>✅ {zone.actual_yield_kg} kg {lang === 'sw' ? 'yaliovunwa' : 'harvested'}</span>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-[#002c11]/[0.04]">
-        <h3 className="font-black text-[#002c11] mb-4 text-sm uppercase tracking-wider" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
-          {lang === 'sw' ? 'Shughuli za Hivi Karibuni' : 'Recent Activity'}
-        </h3>
-        {completedTasks.length === 0 ? (
-          <p className="text-sm text-[#5d6c7b] text-center py-4">{lang === 'sw' ? 'Hakuna shughuli zilizokamilika bado' : 'No completed activities yet'}</p>
-        ) : (
-          <div className="space-y-2">
-            {completedTasks.slice(0, 10).map(task => (
-              <div key={task.id} className="flex items-center gap-3 py-2 border-b border-[#002c11]/[0.04] last:border-0">
-                <span className="text-lg">{task.task_type === 'Fertigation' ? '🧪' : task.task_type === 'Irrigation' ? '💧' : '🔍'}</span>
-                <div className="flex-1">
-                  <p className="text-xs font-bold text-[#002c11]">{task.task_type}</p>
-                  <p className="text-[10px] text-[#5d6c7b]">{new Date(task.scheduled_time).toLocaleDateString()}</p>
-                </div>
-                <span className="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">{lang === 'sw' ? 'Imekamilika' : 'Done'}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}

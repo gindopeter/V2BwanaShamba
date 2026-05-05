@@ -57,7 +57,7 @@ export default function ActionQueue({ tasks, zones }: UpcomingTaskProps) {
   const seconds = (timeLeft || 0) % 60;
   const showCountdown = (timeLeft || 0) <= 600;
   const zone = zones.find(z => z.id === nextTask.zone_id);
-  const taskEmoji = nextTask.task_type === 'Irrigation' ? '💧' : nextTask.task_type === 'Fertigation' ? '🧪' : '🔍';
+  const taskEmoji = nextTask.task_type === 'Fertigation' ? '🧪' : '🔍';
 
   return (
     <div className="bg-white rounded-xl p-5 shadow-sm border border-[#002c11]/[0.04] relative overflow-hidden">

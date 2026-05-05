@@ -120,8 +120,7 @@ async function createSchema() {
       area_size REAL DEFAULT 1.0,
       status TEXT DEFAULT 'Active',
       expected_yield_kg REAL DEFAULT 0,
-      actual_yield_kg REAL DEFAULT 0,
-      irrigation_status TEXT DEFAULT 'Off'
+      actual_yield_kg REAL DEFAULT 0
     )
   `);
 
@@ -226,6 +225,16 @@ async function createSchema() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  await dbExec(`
+    CREATE TABLE IF NOT EXISTS zone_plans (
+      zone_id INTEGER PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      milestones TEXT NOT NULL,
+      lang TEXT DEFAULT 'en',
+      generated_at TEXT NOT NULL
+    )
+  `);
 }
 
 async function runMigrations() {
@@ -239,9 +248,6 @@ async function runMigrations() {
     }
     if (colNames.length > 0 && !colNames.includes('actual_yield_kg')) {
       await pgPool.query("ALTER TABLE zones ADD COLUMN actual_yield_kg REAL DEFAULT 0");
-    }
-    if (colNames.length > 0 && !colNames.includes('irrigation_status')) {
-      await pgPool.query("ALTER TABLE zones ADD COLUMN irrigation_status TEXT DEFAULT 'Off'");
     }
     if (colNames.length > 0 && !colNames.includes('user_id')) {
       await pgPool.query("ALTER TABLE zones ADD COLUMN user_id INTEGER");
@@ -298,6 +304,10 @@ async function runMigrations() {
       await pgPool.query("CREATE TABLE IF NOT EXISTS guest_chat_logs (id SERIAL PRIMARY KEY, ip_address TEXT NOT NULL, message_count INTEGER DEFAULT 1, first_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
     } catch {}
 
+    try {
+      await pgPool.query("CREATE TABLE IF NOT EXISTS zone_plans (zone_id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, milestones TEXT NOT NULL, lang TEXT DEFAULT 'en', generated_at TEXT NOT NULL)");
+    } catch {}
+
   } else {
     const tableInfo = sqliteDb.prepare("PRAGMA table_info(zones)").all() as any[];
     const columnNames = tableInfo.map((c: any) => c.name);
@@ -306,9 +316,6 @@ async function runMigrations() {
     }
     if (!columnNames.includes('actual_yield_kg')) {
       sqliteDb.exec("ALTER TABLE zones ADD COLUMN actual_yield_kg REAL DEFAULT 0");
-    }
-    if (!columnNames.includes('irrigation_status')) {
-      sqliteDb.exec("ALTER TABLE zones ADD COLUMN irrigation_status TEXT DEFAULT 'Off'");
     }
     if (!columnNames.includes('user_id')) {
       sqliteDb.exec("ALTER TABLE zones ADD COLUMN user_id INTEGER");
@@ -344,6 +351,10 @@ async function runMigrations() {
 
     try {
       sqliteDb.exec("CREATE TABLE IF NOT EXISTS guest_chat_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, ip_address TEXT NOT NULL, message_count INTEGER DEFAULT 1, first_message_at TEXT DEFAULT CURRENT_TIMESTAMP, last_message_at TEXT DEFAULT CURRENT_TIMESTAMP)");
+    } catch {}
+
+    try {
+      sqliteDb.exec("CREATE TABLE IF NOT EXISTS zone_plans (zone_id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, milestones TEXT NOT NULL, lang TEXT DEFAULT 'en', generated_at TEXT NOT NULL)");
     } catch {}
   }
 }

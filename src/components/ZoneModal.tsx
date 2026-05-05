@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { X, Trash2, Loader2 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { X, Trash2, Loader2, ChevronDown, Search } from 'lucide-react';
 import { Zone } from '../lib/api';
 import { type Language, t, getCropName } from '../lib/i18n';
 
@@ -13,39 +13,110 @@ interface ZoneModalProps {
   usedAcres?: number;
 }
 
-const CROP_LIST = [
-  { value: 'Tomato',      group: 'horticulture' },
-  { value: 'Onion',       group: 'horticulture' },
-  { value: 'Pepper',      group: 'horticulture' },
-  { value: 'Cabbage',     group: 'horticulture' },
-  { value: 'Spinach',     group: 'horticulture' },
-  { value: 'Cucumber',    group: 'horticulture' },
-  { value: 'Watermelon',  group: 'horticulture' },
-  { value: 'Eggplant',    group: 'horticulture' },
-  { value: 'Carrot',      group: 'horticulture' },
-  { value: 'Lettuce',     group: 'horticulture' },
-  { value: 'Okra',        group: 'horticulture' },
-  { value: 'Green Bean',  group: 'horticulture' },
-  { value: 'Maize',       group: 'cereal' },
+const CROP_LIST: { value: string; group: string }[] = [
+  // Cereals
+  { value: 'Maize',          group: 'cereal' },
+  { value: 'Rice',           group: 'cereal' },
+  { value: 'Sorghum',        group: 'cereal' },
+  { value: 'Millet',         group: 'cereal' },
+  { value: 'Wheat',          group: 'cereal' },
+  { value: 'Barley',         group: 'cereal' },
+  // Vegetables
+  { value: 'Tomato',         group: 'vegetables' },
+  { value: 'Kale',           group: 'vegetables' },
+  { value: 'Onion',          group: 'vegetables' },
+  { value: 'Cabbage',        group: 'vegetables' },
+  { value: 'Spinach',        group: 'vegetables' },
+  { value: 'Amaranth',       group: 'vegetables' },
+  { value: 'Sweet Pepper',   group: 'vegetables' },
+  { value: 'Pepper',         group: 'vegetables' },
+  { value: 'Cucumber',       group: 'vegetables' },
+  { value: 'Eggplant',       group: 'vegetables' },
+  { value: 'Carrot',         group: 'vegetables' },
+  { value: 'Watermelon',     group: 'vegetables' },
+  { value: 'Pumpkin',        group: 'vegetables' },
+  { value: 'Okra',           group: 'vegetables' },
+  { value: 'Green Bean',     group: 'vegetables' },
+  { value: 'Garlic',         group: 'vegetables' },
+  { value: 'Lettuce',        group: 'vegetables' },
+  // Legumes
+  { value: 'Common Bean',    group: 'legumes' },
+  { value: 'Cowpea',         group: 'legumes' },
+  { value: 'Groundnut',      group: 'legumes' },
+  { value: 'Pigeon Pea',     group: 'legumes' },
+  { value: 'Soybean',        group: 'legumes' },
+  { value: 'Chickpea',       group: 'legumes' },
+  // Root Crops
+  { value: 'Cassava',        group: 'rootCrops' },
+  { value: 'Sweet Potato',   group: 'rootCrops' },
+  { value: 'Irish Potato',   group: 'rootCrops' },
+  { value: 'Yam',            group: 'rootCrops' },
+  // Fruits
+  { value: 'Banana',         group: 'fruits' },
+  { value: 'Mango',          group: 'fruits' },
+  { value: 'Avocado',        group: 'fruits' },
+  { value: 'Coconut',        group: 'fruits' },
+  { value: 'Papaya',         group: 'fruits' },
+  { value: 'Pineapple',      group: 'fruits' },
+  { value: 'Orange',         group: 'fruits' },
+  { value: 'Passion Fruit',  group: 'fruits' },
+  { value: 'Guava',          group: 'fruits' },
+  { value: 'Jackfruit',      group: 'fruits' },
+  // Cash Crops
+  { value: 'Cashew',         group: 'cashCrops' },
+  { value: 'Coffee',         group: 'cashCrops' },
+  { value: 'Cotton',         group: 'cashCrops' },
+  { value: 'Sisal',          group: 'cashCrops' },
+  { value: 'Sunflower',      group: 'cashCrops' },
+  { value: 'Tea',            group: 'cashCrops' },
+  { value: 'Sugarcane',      group: 'cashCrops' },
+  { value: 'Tobacco',        group: 'cashCrops' },
+  { value: 'Sesame',         group: 'cashCrops' },
+  { value: 'Clove',          group: 'cashCrops' },
+  { value: 'Pyrethrum',      group: 'cashCrops' },
 ];
 
 const CROP_EMOJI: Record<string, string> = {
-  Tomato: '🍅', Onion: '🧅', Pepper: '🌶️', Cabbage: '🥬', Spinach: '🥬',
-  Cucumber: '🥒', Watermelon: '🍉', Eggplant: '🍆', Carrot: '🥕', Lettuce: '🥗',
-  Okra: '🌿', 'Green Bean': '🫘', Maize: '🌽',
+  Maize: '🌽', Rice: '🌾', Sorghum: '🌾', Millet: '🌾', Wheat: '🌾', Barley: '🌾',
+  Tomato: '🍅', Kale: '🥬', Onion: '🧅', Cabbage: '🥬', Spinach: '🥬', Amaranth: '🥬',
+  'Sweet Pepper': '🫑', Pepper: '🌶️', Cucumber: '🥒', Eggplant: '🍆', Carrot: '🥕',
+  Watermelon: '🍉', Pumpkin: '🎃', Okra: '🌿', 'Green Bean': '🫘', Garlic: '🧄', Lettuce: '🥗',
+  'Common Bean': '🫘', Cowpea: '🫘', Groundnut: '🥜', 'Pigeon Pea': '🫘', Soybean: '🫘', Chickpea: '🫘',
+  Cassava: '🌿', 'Sweet Potato': '🍠', 'Irish Potato': '🥔', Yam: '🍠',
+  Banana: '🍌', Mango: '🥭', Avocado: '🥑', Coconut: '🥥', Papaya: '🍈', Pineapple: '🍍',
+  Orange: '🍊', 'Passion Fruit': '🍈', Guava: '🍈', Jackfruit: '🍈',
+  Cashew: '🌰', Coffee: '☕', Cotton: '🌿', Sisal: '🌿', Sunflower: '🌻', Tea: '🍵',
+  Sugarcane: '🌿', Tobacco: '🌿', Sesame: '🌿', Clove: '🌿', Pyrethrum: '🌸',
 };
+
+const GROUP_ORDER = ['cereal', 'vegetables', 'legumes', 'rootCrops', 'fruits', 'cashCrops'] as const;
 
 export default function ZoneModal({ zone, onClose, onSave, onDelete, lang = 'en', maxAreaSize, usedAcres = 0 }: ZoneModalProps) {
   const isEditing = !!zone;
   const today = new Date().toISOString().split('T')[0];
 
   const [name, setName] = useState(zone?.name || '');
-  const [cropType, setCropType] = useState(zone?.crop_type || 'Tomato');
+  const [cropType, setCropType] = useState(zone?.crop_type || 'Maize');
   const [plantingDate, setPlantingDate] = useState(zone?.planting_date?.split('T')[0] || today);
   const [areaSize, setAreaSize] = useState(zone?.area_size || 1.0);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [cropSearch, setCropSearch] = useState('');
+  const [cropPickerOpen, setCropPickerOpen] = useState(false);
+  const cropPickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!cropPickerOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (cropPickerRef.current && !cropPickerRef.current.contains(e.target as Node)) {
+        setCropPickerOpen(false);
+        setCropSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [cropPickerOpen]);
 
   const inputClass = "w-full px-4 py-3 bg-white border-2 border-[#002c11]/10 rounded-lg text-[#002c11] text-sm font-medium transition-all duration-300 focus:border-[#035925] focus:shadow-[0_0_0_3px_rgba(3,89,37,0.1)] outline-none disabled:opacity-50";
   const labelClass = "block text-[11px] font-bold text-[#002c11]/60 mb-1.5 uppercase tracking-[0.12em]";
@@ -93,8 +164,20 @@ export default function ZoneModal({ zone, onClose, onSave, onDelete, lang = 'en'
     }
   };
 
-  const horticultureCrops = CROP_LIST.filter(c => c.group === 'horticulture');
-  const cerealCrops = CROP_LIST.filter(c => c.group === 'cereal');
+  const filteredCrops = cropSearch.trim()
+    ? CROP_LIST.filter(c => {
+        const query = cropSearch.toLowerCase();
+        const enName = c.value.toLowerCase();
+        const swName = getCropName(c.value, 'sw').toLowerCase();
+        return enName.includes(query) || swName.includes(query);
+      })
+    : CROP_LIST;
+
+  const groupedCrops = GROUP_ORDER.map(group => ({
+    group,
+    label: t(lang, group as any),
+    crops: filteredCrops.filter(c => c.group === group),
+  })).filter(g => g.crops.length > 0);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
@@ -132,22 +215,62 @@ export default function ZoneModal({ zone, onClose, onSave, onDelete, lang = 'en'
 
           <div>
             <label className={labelClass}>{t(lang, 'cropType')}</label>
-            <select value={cropType} onChange={e => setCropType(e.target.value)} className={inputClass} disabled={saving}>
-              <optgroup label={t(lang, 'horticulture')}>
-                {horticultureCrops.map(c => (
-                  <option key={c.value} value={c.value}>
-                    {CROP_EMOJI[c.value]} {getCropName(c.value, lang)}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label={t(lang, 'cereal')}>
-                {cerealCrops.map(c => (
-                  <option key={c.value} value={c.value}>
-                    {CROP_EMOJI[c.value]} {getCropName(c.value, lang)}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
+            <div ref={cropPickerRef} className="relative">
+              <button
+                type="button"
+                onClick={() => { if (!saving) { setCropPickerOpen(o => !o); setCropSearch(''); } }}
+                disabled={saving}
+                className={`${inputClass} flex items-center justify-between text-left`}
+              >
+                <span>{CROP_EMOJI[cropType]} {getCropName(cropType, lang)}</span>
+                <ChevronDown className={`w-4 h-4 text-[#5d6c7b] flex-shrink-0 transition-transform ${cropPickerOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {cropPickerOpen && (
+                <div className="absolute z-50 left-0 right-0 mt-1 bg-white border-2 border-[#002c11]/10 rounded-lg shadow-xl overflow-hidden">
+                  <div className="p-2 border-b border-[#002c11]/5">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-[#f9f6f1] rounded-md">
+                      <Search className="w-3.5 h-3.5 text-[#5d6c7b] flex-shrink-0" />
+                      <input
+                        autoFocus
+                        type="text"
+                        value={cropSearch}
+                        onChange={e => setCropSearch(e.target.value)}
+                        placeholder={t(lang, 'searchCrops' as any)}
+                        className="flex-1 bg-transparent text-sm text-[#002c11] placeholder-[#5d6c7b]/60 outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto">
+                    {groupedCrops.length === 0 ? (
+                      <div className="px-4 py-3 text-sm text-[#5d6c7b]/60 text-center">
+                        {lang === 'sw' ? 'Hakuna zao lililopatikana' : 'No crops found'}
+                      </div>
+                    ) : groupedCrops.map(({ group, label, crops }) => (
+                      <div key={group}>
+                        <div className="px-3 py-1.5 text-[10px] font-bold text-[#002c11]/40 uppercase tracking-widest bg-[#f9f6f1]/60 sticky top-0">
+                          {label}
+                        </div>
+                        {crops.map(c => (
+                          <button
+                            key={c.value}
+                            type="button"
+                            onClick={() => { setCropType(c.value); setCropPickerOpen(false); setCropSearch(''); }}
+                            className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 transition-colors
+                              ${cropType === c.value
+                                ? 'bg-[#035925]/10 text-[#035925] font-semibold'
+                                : 'text-[#002c11] hover:bg-[#f9f6f1]'}`}
+                          >
+                            <span className="text-base leading-none">{CROP_EMOJI[c.value]}</span>
+                            <span>{getCropName(c.value, lang)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div>
