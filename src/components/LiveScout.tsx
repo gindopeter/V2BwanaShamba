@@ -812,9 +812,12 @@ registerProcessor('pcm-capture-processor', PCMCaptureProcessor);
       }
     };
 
-    ws.onerror = () => {
+    ws.onerror = (ev) => {
+      console.error('[LiveVoice] WebSocket error event', ev);
       if (isLiveVoiceRef.current) {
-        setMessages(prev => [...prev, { role: 'system', text: 'Connection error. Please try again.' }]);
+        // Don't show a duplicate message — the 'error' message from proxy or
+        // the onclose handler will also fire and may already show something.
+        // Only show if we have nothing else pending.
         stopLiveVoice();
       }
     };
@@ -825,9 +828,14 @@ registerProcessor('pcm-capture-processor', PCMCaptureProcessor);
         keepaliveIntervalRef.current = null;
       }
       if (isLiveVoiceRef.current) {
-        // Only show a separate error banner if the server closed abnormally and
-        // we haven't already shown an error message via msg.type === 'error'
-        if (event.code !== 1000 && event.code !== 1001) {
+        console.log('[LiveVoice] WebSocket closed, code:', event.code, 'reason:', event.reason, 'sessionReady:', sessionReadyRef.current);
+        // Show an error banner unless:
+        // (a) code 1000/1001 AND session was fully ready (normal end), or
+        // (b) we already showed an error via msg.type === 'error' (proxy sends that before closing with 1011)
+        const wasReady = sessionReadyRef.current;
+        const normalClose = (event.code === 1000 || event.code === 1001) && wasReady;
+        if (!normalClose && event.code !== 1011) {
+          // 1011 closes are preceded by an error message from the proxy
           const reason = event.reason || `Connection closed (code ${event.code})`;
           setMessages(prev => [...prev, { role: 'system', text: `Session ended: ${reason}` }]);
         }
