@@ -201,29 +201,7 @@ export default function Login({ onLogin }: LoginProps) {
     handleGuestChat(e);
   };
 
-  if (panel === 'register') {
-    return (
-      <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          overflowY: 'auto',
-          background: '#f9f6f1',
-          fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
-          padding: '32px 24px 40px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
-        <Register
-          onRegister={onLogin}
-          onBack={() => setPanel('landing')}
-          initialLanguage={lang}
-        />
-      </div>
-    );
-  }
+  // Register is now rendered as a glass sheet overlay (see bottom of JSX)
 
   return (
     <>
@@ -521,6 +499,49 @@ export default function Login({ onLogin }: LoginProps) {
                   style={{ background: 'transparent', border: 0, color: 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
                 >
                   {t(lang, 'signUp')}
+                </button>
+                <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
+                <button
+                  onClick={() => setPanel('chat')}
+                  style={{ background: 'transparent', border: 0, color: 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  {t(lang, 'chatWithUs')}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── Register sheet ── */}
+        {panel === 'register' && (
+          <>
+            <div
+              onClick={() => setPanel('landing')}
+              style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)' }}
+            />
+            <div
+              style={{
+                ...sharedSheetStyle,
+                left: 'max(18px, calc(50% - 222px))',
+                right: 'max(18px, calc(50% - 222px))',
+                maxHeight: '92vh',
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <Register
+                onRegister={onLogin}
+                onBack={() => setPanel('landing')}
+                onClose={() => setPanel('landing')}
+                initialLanguage={lang}
+              />
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 14 }}>
+                <button
+                  onClick={() => setPanel('signin')}
+                  style={{ background: 'transparent', border: 0, color: 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  {t(lang, 'signIn')}
                 </button>
                 <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
                 <button
