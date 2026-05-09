@@ -86,6 +86,7 @@ export default function LiveScout({
   const aiJustFinishedRef = useRef(false);
   const keepaliveIntervalRef = useRef<any>(null);
   const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const reconnectAttemptsRef = useRef(0);
 
   useEffect(() => { isLiveVoiceRef.current = isLiveVoice; }, [isLiveVoice]);
   useEffect(() => { mediaStreamRef.current = mediaStream; }, [mediaStream]);
@@ -747,6 +748,7 @@ registerProcessor('pcm-capture-processor', PCMCaptureProcessor);
         if (msg.type === 'ready') {
           sessionReadyRef.current = true;
           nextPlayTimeRef.current = 0;
+          reconnectAttemptsRef.current = 0; // successful connection — reset counter
           setMessages(prev => [...prev, { role: 'system', text: 'Live voice active. Speak to BwanaShamba in English or Kiswahili.' }]);
           startMicCapture();
           if (isCameraActiveRef.current) startCameraFrames();
@@ -831,6 +833,20 @@ registerProcessor('pcm-capture-processor', PCMCaptureProcessor);
       }
       if (isLiveVoiceRef.current) {
         console.log('[LiveVoice] WebSocket closed, code:', event.code, 'reason:', event.reason, 'sessionReady:', sessionReadyRef.current);
+
+        // code 1006 = abnormal TCP drop (Cloud Run timeout / instance restart / network).
+        // Auto-reconnect up to 3 times so the user doesn't have to tap the button again.
+        if (event.code === 1006 && reconnectAttemptsRef.current < 3) {
+          reconnectAttemptsRef.current += 1;
+          stopLiveVoice();
+          setMessages(prev => [...prev, {
+            role: 'system',
+            text: `Connection dropped — reconnecting (${reconnectAttemptsRef.current}/3)…`,
+          }]);
+          setTimeout(() => { startLiveVoice(); }, 2000);
+          return;
+        }
+
         // Show an error banner unless:
         // (a) code 1000/1001 AND session was fully ready (normal end), or
         // (b) we already showed an error via msg.type === 'error' (proxy sends that before closing with 1011)

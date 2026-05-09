@@ -153,10 +153,12 @@ async function handleSession(ws: WebSocket, userId: number) {
       if (!geminiSession) return;
       if (msg.type === 'audio' && msg.data) {
         // audio field for PCM audio data; mimeType must be 'audio/pcm;rate=16000'
-        geminiSession.sendRealtimeInput({ audio: { data: msg.data, mimeType: 'audio/pcm;rate=16000' } });
+        const r = geminiSession.sendRealtimeInput({ audio: { data: msg.data, mimeType: 'audio/pcm;rate=16000' } });
+        if (r && typeof (r as any).catch === 'function') (r as any).catch((e: any) => console.error('[LiveProxy] sendRealtimeInput audio error:', e));
       } else if (msg.type === 'image' && msg.data) {
         // media / video field for image frames
-        geminiSession.sendRealtimeInput({ video: { data: msg.data, mimeType: 'image/jpeg' } });
+        const r = geminiSession.sendRealtimeInput({ video: { data: msg.data, mimeType: 'image/jpeg' } });
+        if (r && typeof (r as any).catch === 'function') (r as any).catch((e: any) => console.error('[LiveProxy] sendRealtimeInput image error:', e));
       }
       // keepalive messages are silently ignored
     } catch (err) {
