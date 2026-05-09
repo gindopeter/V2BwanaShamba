@@ -645,7 +645,10 @@ export default function LiveScout({
     // 4. Capture mic and stream 16 kHz PCM to proxy via AudioWorkletNode
     const startMicCapture = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: false,
+        });
         audioStreamRef.current = stream;
 
         let ctx = audioContextRef.current;
@@ -696,7 +699,6 @@ registerProcessor('pcm-capture-processor', PCMCaptureProcessor);
 
         workletNode.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
           if (!isLiveVoiceRef.current || !sessionReadyRef.current) return;
-          if (isAiSpeakingRef.current) return; // don't send while AI is speaking
           const wsConn = liveWsRef.current;
           if (!wsConn || wsConn.readyState !== WebSocket.OPEN) return;
           const raw = new Float32Array(e.data);
