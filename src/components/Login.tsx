@@ -20,18 +20,6 @@ const TYPING_PHRASES = [
 ];
 
 const ANIMATIONS = `
-@keyframes fieldBreath {
-  0%   { transform: scale(1.055) translate3d(-0.7%,-0.4%,0) rotate(-0.15deg); }
-  28%  { transform: scale(1.065) translate3d(0.35%,-0.2%,0) rotate(0.12deg); }
-  58%  { transform: scale(1.06)  translate3d(-0.15%,0.25%,0) rotate(-0.08deg); }
-  100% { transform: scale(1.055) translate3d(-0.7%,-0.4%,0) rotate(-0.15deg); }
-}
-@keyframes windLight {
-  0%   { transform: translate3d(-18%,5%,0) skewX(-10deg); opacity:0.06; }
-  38%  { transform: translate3d(18%,-2%,0) skewX(-10deg); opacity:0.12; }
-  72%  { transform: translate3d(-4%,3%,0)  skewX(-10deg); opacity:0.08; }
-  100% { transform: translate3d(-18%,5%,0) skewX(-10deg); opacity:0.06; }
-}
 @keyframes sheetUp {
   from { transform: translateY(32px); opacity:0; }
   to   { transform: translateY(0);    opacity:1; }
@@ -217,32 +205,15 @@ export default function Login({ onLogin }: LoginProps) {
       >
         {/* Hero photo */}
         <img
-          src="/assets/farm-field-hq.jpg"
+          src="/assets/login-vegetables-sample.jpg"
           alt=""
           aria-hidden="true"
           style={{
             position: 'absolute', inset: 0,
             width: '100%', height: '100%',
-            objectFit: 'cover', objectPosition: '52% 50%',
-            filter: 'saturate(1.16) contrast(1.08)',
-            animation: 'fieldBreath 9s ease-in-out infinite',
-            transformOrigin: '50% 88%',
-            willChange: 'transform',
-          }}
-        />
-
-        {/* Wind-light shimmer */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: 'absolute', inset: 0, pointerEvents: 'none',
-            background: [
-              'linear-gradient(105deg, transparent 0 28%, rgba(255,255,255,0.16) 38%, transparent 52% 100%)',
-              'linear-gradient(82deg, transparent 0 48%, rgba(255,232,142,0.08) 56%, transparent 66% 100%)',
-            ].join(','),
-            mixBlendMode: 'soft-light',
-            animation: 'windLight 6.8s ease-in-out infinite',
-            willChange: 'transform, opacity',
+            objectFit: 'cover', objectPosition: '50% 50%',
+            filter: 'saturate(1.12) contrast(1.06)',
+            imageRendering: 'high-quality',
           }}
         />
 
