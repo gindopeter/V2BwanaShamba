@@ -3,8 +3,9 @@ import type { Server as HttpServer, IncomingMessage } from 'http';
 import { GoogleGenAI, Modality } from '@google/genai';
 import { randomUUID } from 'crypto';
 import { URL } from 'url';
+import { dbGet, dbAll } from './db.ts';
 
-const SYSTEM_INSTRUCTION =
+const BASE_SYSTEM_INSTRUCTION =
   'LANGUAGE RULE — HIGHEST PRIORITY: Listen to what language the user is speaking RIGHT NOW. ' +
   'If they speak English, respond entirely in English. If they speak Kiswahili, respond entirely in Kiswahili. ' +
   'Switch immediately the moment the user switches languages. Never respond in a language other than what the user just used. ' +
@@ -16,6 +17,57 @@ const SYSTEM_INSTRUCTION =
   'rainfall patterns, seasonal calendars, and can draw on satellite/remote-sensing knowledge for soil and land analysis. ' +
   'When asked, you can compare Tanzania\'s agriculture to other countries and highlight lessons applicable to Tanzanian farmers. ' +
   'Tailor every answer to the farmer\'s specific region and crops. Keep answers practical, concise, and actionable.';
+
+async function buildSystemInstruction(userId: number): Promise<string> {
+  try {
+    const user = await dbGet(
+      'SELECT first_name, last_name, region, district, farm_size_acres FROM users WHERE id = ?',
+      userId
+    );
+    const zones = await dbAll(
+      "SELECT name, crop_type, area_size, planting_date, status FROM zones WHERE user_id = ? AND status != 'Harvested' ORDER BY planting_date DESC LIMIT 10",
+      userId
+    );
+
+    const now = new Date().toLocaleString('en-US', {
+      timeZone: 'Africa/Dar_es_Salaam',
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+
+    let context = BASE_SYSTEM_INSTRUCTION + '\n\n';
+    context += `Current Date/Time: ${now} EAT\n`;
+
+    if (user) {
+      const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Farmer';
+      context += `\nFARMER PROFILE:\n`;
+      context += `Name: ${name}\n`;
+      if (user.district || user.region) {
+        const loc = [user.district && `${user.district} District`, user.region && `${user.region} Region`, 'Tanzania']
+          .filter(Boolean).join(', ');
+        context += `Location: ${loc}\n`;
+      }
+      if (user.farm_size_acres) {
+        context += `Farm Size: ${user.farm_size_acres} acres\n`;
+      }
+    }
+
+    if (zones && zones.length > 0) {
+      context += `\nACTIVE CROPS:\n`;
+      for (const z of zones) {
+        const area = z.area_size ? ` (${z.area_size} acres)` : '';
+        const planted = z.planting_date ? `, planted ${z.planting_date}` : '';
+        context += `- ${z.crop_type}${area} in zone "${z.name}"${planted} [${z.status}]\n`;
+      }
+    }
+
+    context += `\nAddress the farmer by name when appropriate. Always tailor advice to their specific location and active crops.`;
+    return context;
+  } catch (err) {
+    console.error('[LiveProxy] Failed to load user context, using base instruction:', err);
+    return BASE_SYSTEM_INSTRUCTION;
+  }
+}
 
 interface LiveToken {
   userId: number;
@@ -46,6 +98,9 @@ async function handleSession(ws: WebSocket, userId: number) {
     return;
   }
 
+  const systemInstruction = await buildSystemInstruction(userId);
+  console.log(`[LiveProxy] System instruction built for user ${userId}`);
+
   const ai = new GoogleGenAI({ apiKey });
   let geminiSession: any = null;
 
@@ -66,7 +121,7 @@ async function handleSession(ws: WebSocket, userId: number) {
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } } },
-        systemInstruction: SYSTEM_INSTRUCTION,
+        systemInstruction: systemInstruction,
         outputAudioTranscription: {},
         inputAudioTranscription: {},
       },
