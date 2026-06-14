@@ -74,6 +74,9 @@ export default function App() {
   const navigate = (view: string) => {
     window.location.hash = view;
     setCurrentView(view);
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'page_view', { page_title: view, page_path: `/#${view}` });
+    }
   };
 
   // Handle browser back / forward and manual hash edits
