@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { dbAll, dbGet } from '../db.ts';
 import { getDaysToHarvest, getGrowthStage } from '../constants/crops.ts';
 import { TANZANIA_DISTRICT_COORDS } from '../constants/district_coords.ts';
+import { languageDirective, type DetectedLanguage } from './language.ts';
 
 // Region-centre fallback coords (first/main city per region)
 const REGION_FALLBACK: Record<string, { lat: number; lon: number }> = {
@@ -186,7 +187,8 @@ export async function chatViaGeminiDirect(
   contents: any[],
   image?: string,
   mimeType?: string,
-  userId?: number
+  userId?: number,
+  responseLang?: DetectedLanguage | null
 ): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Gemini API key not configured');
@@ -207,7 +209,8 @@ export async function chatViaGeminiDirect(
     ? `Farm Location: ${[profile.district && `${profile.district} District`, profile.region && `${profile.region} Region`].filter(Boolean).join(', ')}, Tanzania`
     : 'Farm Location: Tanzania';
 
-  const systemInstruction = `LANGUAGE RULE — HIGHEST PRIORITY: Look at the language of the LAST USER MESSAGE only. If it is English, your entire response MUST be in English. If it is Kiswahili, your entire response MUST be in Kiswahili. Do NOT use the conversation history to decide language — only the last message matters. Switch immediately whenever the user switches languages.
+  const langDirective = languageDirective(responseLang ?? null);
+  const systemInstruction = `${langDirective ? langDirective + '\n\n' : ''}LANGUAGE RULE — HIGHEST PRIORITY: Look at the language of the LAST USER MESSAGE only. If it is English, your entire response MUST be in English. If it is Kiswahili, your entire response MUST be in Kiswahili. Do NOT use the conversation history to decide language — only the last message matters. Switch immediately whenever the user switches languages.
 
 You are 'BwanaShamba', an AI agricultural assistant focused on Tanzania. You have deep knowledge of Tanzanian agriculture across all 26 regions — including soils, climate zones, crops, pests, diseases, irrigation, fertigation, market prices, and farming practices.
 

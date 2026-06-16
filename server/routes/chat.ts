@@ -5,6 +5,7 @@ import { isAuthenticated } from '../middleware/auth.ts';
 import { getFarmContext, chatViaGeminiDirect } from '../services/gemini.ts';
 import { chatViaADK, createADKStreamFetch } from '../services/adk.ts';
 import { issueLiveToken } from '../liveVoiceProxy.ts';
+import { detectLanguage, languageDirective } from '../services/language.ts';
 
 const router = Router();
 
@@ -126,7 +127,8 @@ router.post('/guest', async (req, res) => {
 
     const ai = new GoogleGenAI({ apiKey });
 
-    const systemInstruction = `LANGUAGE RULE — HIGHEST PRIORITY: Look at the language of the user's current message only. If it is English, respond entirely in English. If it is Kiswahili, respond entirely in Kiswahili. Do NOT use prior messages to decide language — only the current message matters. Switch immediately whenever the user switches languages.
+    const langDirective = languageDirective(detectLanguage(message));
+    const systemInstruction = `${langDirective ? langDirective + '\n\n' : ''}LANGUAGE RULE — HIGHEST PRIORITY: Look at the language of the user's current message only. If it is English, respond entirely in English. If it is Kiswahili, respond entirely in Kiswahili. Do NOT use prior messages to decide language — only the current message matters. Switch immediately whenever the user switches languages.
 
 You are BwanaShamba, an AI agricultural assistant focused on Tanzania. You have deep knowledge of Tanzanian agriculture across all 26 regions.
 You assist with ALL crops — vegetables, cereals, legumes, cash crops, fruits, and root crops.
@@ -235,7 +237,12 @@ router.post('/', isAuthenticated, async (req, res) => {
         (userProfile.district ? `Weather: call get_weather_forecast with district="${userProfile.district}" region="${userProfile.region || ''}" for accurate local conditions\n` : '') +
         `[END FARM CONTEXT]\n\n`;
     }
-    const enrichedMessage = farmContextPrefix + (message || 'Analyze this image.');
+    // Detect the language of the user's message so we can force the AI to
+    // reply in the same language regardless of any English farm-context above.
+    const responseLang = detectLanguage(message || '');
+    const langDirective = languageDirective(responseLang);
+    const langPrefix = langDirective ? `[${langDirective}]\n\n` : '';
+    const enrichedMessage = langPrefix + farmContextPrefix + (message || 'Analyze this image.');
 
     // ── Streaming path ──────────────────────────────────────────────────────────
     if (wantStream) {
@@ -336,7 +343,7 @@ router.post('/', isAuthenticated, async (req, res) => {
           parts: [{ text: msg.text }],
         }));
 
-        fullReply = await chatViaGeminiDirect(enrichedMessage, contents, image, clientMimeType, userId);
+        fullReply = await chatViaGeminiDirect(enrichedMessage, contents, image, clientMimeType, userId, responseLang);
         res.write(`data: ${JSON.stringify({ type: 'text', content: fullReply })}\n\n`);
       }
 
@@ -406,7 +413,7 @@ router.post('/', isAuthenticated, async (req, res) => {
         parts: [{ text: msg.text }],
       }));
 
-      reply = await chatViaGeminiDirect(enrichedMessage, contents, image, clientMimeType, userId);
+      reply = await chatViaGeminiDirect(enrichedMessage, contents, image, clientMimeType, userId, responseLang);
     }
 
     await dbRun(

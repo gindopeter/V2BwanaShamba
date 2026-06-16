@@ -13,11 +13,18 @@ interface GuestMessage {
   text: string;
 }
 
-const TYPING_PHRASES = [
-  'Get crop health tips...',
-  'Check market prices...',
-  'Speak with an agronomist...',
-];
+const TYPING_PHRASES: Record<'en' | 'sw', string[]> = {
+  en: [
+    'Get crop health tips...',
+    'Check market prices...',
+    'Speak with an agronomist...',
+  ],
+  sw: [
+    'Pata ushauri wa afya ya mazao...',
+    'Angalia bei za soko...',
+    'Ongea na mtaalamu wa kilimo...',
+  ],
+};
 
 const ANIMATIONS = `
 @keyframes sheetUp {
@@ -89,24 +96,24 @@ export default function Login({ onLogin }: LoginProps) {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const [typingText, setTypingText] = useState('');
-  const typingActive = useRef(true);
 
   useEffect(() => {
-    typingActive.current = true;
+    let active = true;
     let phraseIndex = 0;
+    const phrases = TYPING_PHRASES[lang === 'sw' ? 'sw' : 'en'];
     const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
     const run = async () => {
-      while (typingActive.current) {
-        const word = TYPING_PHRASES[phraseIndex % TYPING_PHRASES.length];
+      while (active) {
+        const word = phrases[phraseIndex % phrases.length];
         for (let i = 0; i <= word.length; i++) {
-          if (!typingActive.current) return;
+          if (!active) return;
           setTypingText(word.substring(0, i));
           await sleep(80);
         }
         await sleep(2000);
         for (let i = word.length; i >= 0; i--) {
-          if (!typingActive.current) return;
+          if (!active) return;
           setTypingText(word.substring(0, i));
           await sleep(40);
         }
@@ -115,8 +122,8 @@ export default function Login({ onLogin }: LoginProps) {
       }
     };
     run();
-    return () => { typingActive.current = false; };
-  }, []);
+    return () => { active = false; };
+  }, [lang]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -551,7 +558,18 @@ export default function Login({ onLogin }: LoginProps) {
                   </strong>
                   {!guestLimitReached && (
                     <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.48)' }}>
-                      {lang === 'sw' ? `Ujumbe ${guestRemaining} uliosalia` : `${guestRemaining} messages remaining`}
+                      {lang === 'sw' ? `Zimebaki meseji ${guestRemaining}.` : `${guestRemaining} messages remaining`}
+                      {lang === 'sw' ? ' ' : ' · '}
+                      <button
+                        onClick={() => setPanel('signin')}
+                        style={{
+                          background: 'none', border: 0, padding: 0, cursor: 'pointer',
+                          fontFamily: 'inherit', fontSize: 10, fontWeight: 600,
+                          color: 'rgba(255,255,255,0.85)', textDecoration: 'underline',
+                        }}
+                      >
+                        {lang === 'sw' ? 'Ingia kwa Mazungumzo yasiyo na kikomo' : 'Sign In for Unlimited Chat'}
+                      </button>
                     </span>
                   )}
                 </div>
