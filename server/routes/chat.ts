@@ -149,7 +149,7 @@ Current Date: ${new Date().toISOString().split('T')[0]}`;
       : [];
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: [...priorTurns, { role: 'user', parts: [{ text: message }] }],
       config: { systemInstruction },
     });
@@ -474,7 +474,7 @@ Analyze this image and provide:
 Be concise and actionable.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: [
         {
           parts: [
