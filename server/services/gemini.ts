@@ -179,23 +179,13 @@ ${logDetails || 'No logs'}
 }
 
 /**
- * Sends a chat request directly to Gemini (no ADK). Used as the ADK fallback.
- * Includes live weather data for the user's farm location.
+ * Builds the BwanaShamba system instruction, injecting the farmer's live farm
+ * data and weather. Shared by the streaming and non-streaming direct-Gemini calls.
  */
-export async function chatViaGeminiDirect(
-  message: string,
-  contents: any[],
-  image?: string,
-  mimeType?: string,
+async function buildChatSystemInstruction(
   userId?: number,
   responseLang?: DetectedLanguage | null
 ): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('Gemini API key not configured');
-
-  const ai = new GoogleGenAI({ apiKey });
-
-  // Fetch farm data and weather in parallel
   const profile = userId
     ? await dbGet('SELECT region, district, farm_size_acres FROM users WHERE id = ?', userId)
     : null;
@@ -210,7 +200,7 @@ export async function chatViaGeminiDirect(
     : 'Farm Location: Tanzania';
 
   const langDirective = languageDirective(responseLang ?? null);
-  const systemInstruction = `${langDirective ? langDirective + '\n\n' : ''}LANGUAGE RULE — HIGHEST PRIORITY: Look at the language of the LAST USER MESSAGE only. If it is English, your entire response MUST be in English. If it is Kiswahili, your entire response MUST be in Kiswahili. Do NOT use the conversation history to decide language — only the last message matters. Switch immediately whenever the user switches languages.
+  return `${langDirective ? langDirective + '\n\n' : ''}LANGUAGE RULE — HIGHEST PRIORITY: Look at the language of the LAST USER MESSAGE only. If it is English, your entire response MUST be in English. If it is Kiswahili, your entire response MUST be in Kiswahili. Do NOT use the conversation history to decide language — only the last message matters. Switch immediately whenever the user switches languages.
 
 You are 'BwanaShamba', an AI agricultural assistant focused on Tanzania. You have deep knowledge of Tanzanian agriculture across all 26 regions — including soils, climate zones, crops, pests, diseases, irrigation, fertigation, market prices, and farming practices.
 
@@ -232,6 +222,25 @@ ${farmContext}
 
 Current Date/Time: ${new Date().toLocaleString('en-US', { timeZone: 'Africa/Dar_es_Salaam' })} EAT
 Be concise, practical, and specific. Prioritise advice that is immediately actionable for the farmer.`;
+}
+
+/**
+ * Sends a chat request directly to Gemini (no ADK). Used as the ADK fallback.
+ * Includes live weather data for the user's farm location.
+ */
+export async function chatViaGeminiDirect(
+  message: string,
+  contents: any[],
+  image?: string,
+  mimeType?: string,
+  userId?: number,
+  responseLang?: DetectedLanguage | null
+): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('Gemini API key not configured');
+
+  const ai = new GoogleGenAI({ apiKey });
+  const systemInstruction = await buildChatSystemInstruction(userId, responseLang);
 
   if (image) {
     const lastContent = contents[contents.length - 1];
@@ -246,5 +255,49 @@ Be concise, practical, and specific. Prioritise advice that is immediately actio
     config: { systemInstruction },
   });
   return response.text || 'I could not generate a response.';
+}
+
+/**
+ * Streaming variant of {@link chatViaGeminiDirect}. Invokes `onChunk` for each
+ * text fragment as it arrives so the SSE fallback can type the reply out
+ * progressively, and resolves with the full accumulated reply (for persistence).
+ */
+export async function chatViaGeminiDirectStream(
+  message: string,
+  contents: any[],
+  image: string | undefined,
+  mimeType: string | undefined,
+  userId: number | undefined,
+  responseLang: DetectedLanguage | null | undefined,
+  onChunk: (piece: string) => void
+): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('Gemini API key not configured');
+
+  const ai = new GoogleGenAI({ apiKey });
+  const systemInstruction = await buildChatSystemInstruction(userId, responseLang);
+
+  if (image) {
+    const lastContent = contents[contents.length - 1];
+    if (lastContent) {
+      lastContent.parts.unshift({ inlineData: { mimeType: mimeType || 'image/jpeg', data: image } });
+    }
+  }
+
+  const stream = await ai.models.generateContentStream({
+    model: 'gemini-3-flash-preview',
+    contents,
+    config: { systemInstruction },
+  });
+
+  let full = '';
+  for await (const chunk of stream) {
+    const piece = chunk.text;
+    if (piece) {
+      full += piece;
+      onChunk(piece);
+    }
+  }
+  return full || 'I could not generate a response.';
 }
 

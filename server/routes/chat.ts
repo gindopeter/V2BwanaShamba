@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { GoogleGenAI } from '@google/genai';
 import { dbAll, dbGet, dbRun } from '../db.ts';
 import { isAuthenticated } from '../middleware/auth.ts';
-import { getFarmContext, chatViaGeminiDirect } from '../services/gemini.ts';
+import { getFarmContext, chatViaGeminiDirect, chatViaGeminiDirectStream } from '../services/gemini.ts';
 import { chatViaADK, createADKStreamFetch } from '../services/adk.ts';
 import { issueLiveToken } from '../liveVoiceProxy.ts';
 import { detectLanguage, languageDirective } from '../services/language.ts';
@@ -390,8 +390,19 @@ router.post('/', isAuthenticated, async (req, res) => {
           parts: [{ text: msg.text }],
         }));
 
-        fullReply = await chatViaGeminiDirect(enrichedMessage, contents, image, clientMimeType, userId, responseLang);
-        res.write(`data: ${JSON.stringify({ type: 'text', content: fullReply })}\n\n`);
+        fullReply = await chatViaGeminiDirectStream(
+          enrichedMessage,
+          contents,
+          image,
+          clientMimeType,
+          userId,
+          responseLang,
+          (piece) => {
+            if (!clientDisconnected) {
+              res.write(`data: ${JSON.stringify({ type: 'text', content: piece })}\n\n`);
+            }
+          }
+        );
       }
 
       if (fullReply) {
