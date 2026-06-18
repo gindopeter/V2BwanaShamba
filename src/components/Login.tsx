@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 import Register from './Register';
 import { type Language, t } from '../lib/i18n';
 
 interface LoginProps {
   onLogin: (user: any) => void;
+  notice?: string | null;
 }
 
 type Panel = 'landing' | 'signin' | 'register' | 'chat';
@@ -11,6 +13,7 @@ type Panel = 'landing' | 'signin' | 'register' | 'chat';
 interface GuestMessage {
   role: 'user' | 'ai';
   text: string;
+  streaming?: boolean;
 }
 
 const TYPING_PHRASES: Record<'en' | 'sw', string[]> = {
@@ -39,6 +42,19 @@ const ANIMATIONS = `
   0%,100% { opacity:1; }
   50%     { opacity:0; }
 }
+.guest-md > :first-child { margin-top: 0; }
+.guest-md > :last-child { margin-bottom: 0; }
+.guest-md p { margin: 0 0 6px; }
+.guest-md ul, .guest-md ol { margin: 4px 0 6px; padding-left: 18px; }
+.guest-md li { margin: 2px 0; }
+.guest-md li::marker { color: rgba(255,255,255,0.6); }
+.guest-md strong { font-weight: 700; }
+.guest-md em { font-style: italic; }
+.guest-md a { color: #ffe08a; text-decoration: underline; }
+.guest-md h1, .guest-md h2, .guest-md h3, .guest-md h4 { font-size: 13px; font-weight: 700; margin: 8px 0 4px; }
+.guest-md code { background: rgba(255,255,255,0.18); padding: 1px 4px; border-radius: 4px; font-size: 11px; }
+.guest-md pre { background: rgba(0,0,0,0.28); padding: 8px; border-radius: 8px; overflow-x: auto; margin: 4px 0 6px; }
+.guest-md pre code { background: none; padding: 0; }
 `;
 
 const sharedSheetStyle: React.CSSProperties = {
@@ -79,12 +95,12 @@ const inputStyle: React.CSSProperties = {
   fontSize: 16,
 };
 
-export default function Login({ onLogin }: LoginProps) {
+export default function Login({ onLogin, notice }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [panel, setPanel] = useState<Panel>('landing');
+  const [panel, setPanel] = useState<Panel>(notice ? 'signin' : 'landing');
   const [lang, setLang] = useState<Language>('en');
 
   const [guestMessages, setGuestMessages] = useState<GuestMessage[]>([]);
@@ -161,6 +177,7 @@ export default function Login({ onLogin }: LoginProps) {
     e.preventDefault();
     if (!guestInput.trim() || guestLoading || guestLimitReached) return;
     const userMsg = guestInput.trim();
+    const history = guestMessages;
     setGuestInput('');
     setGuestMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setGuestLoading(true);
@@ -168,20 +185,82 @@ export default function Login({ onLogin }: LoginProps) {
       const res = await fetch('/api/chat/guest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMsg, language: lang, history: guestMessages }),
+        body: JSON.stringify({ message: userMsg, language: lang, history, stream: true }),
       });
-      const data = await res.json();
-      if (res.status === 429) {
-        setGuestLimitReached(true);
-        setGuestLimitMsg(data.message || t(lang, 'guestLimitReached'));
+
+      const contentType = res.headers.get('content-type') || '';
+
+      // Non-stream responses (rate limit, errors, or a server that didn't stream)
+      // still arrive as plain JSON — handle them the old way.
+      if (!contentType.includes('text/event-stream') || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 429) {
+          setGuestLimitReached(true);
+          setGuestLimitMsg(data.message || t(lang, 'guestLimitReached'));
+          return;
+        }
+        if (!res.ok) {
+          setGuestMessages(prev => [...prev, { role: 'ai', text: lang === 'sw' ? 'Samahani, hitilafu imetokea.' : 'Sorry, something went wrong.' }]);
+          return;
+        }
+        setGuestMessages(prev => [...prev, { role: 'ai', text: data.reply || '' }]);
+        if (typeof data.messages_remaining === 'number') setGuestRemaining(data.messages_remaining);
         return;
       }
-      if (!res.ok) {
-        setGuestMessages(prev => [...prev, { role: 'ai', text: lang === 'sw' ? 'Samahani, hitilafu imetokea.' : 'Sorry, something went wrong.' }]);
-        return;
+
+      // Streaming path — type the reply out token-by-token as it arrives.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let accumulated = '';
+      let started = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            if (parsed.type === 'text' && parsed.content) {
+              accumulated += parsed.content;
+              if (!started) {
+                started = true;
+                // Keep guestLoading true (input stays locked until the stream
+                // ends); the dots hide on their own once this streaming message
+                // appears, and the caret signals ongoing activity.
+                setGuestMessages(prev => [...prev, { role: 'ai', text: accumulated, streaming: true }]);
+              } else {
+                setGuestMessages(prev => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = { role: 'ai', text: accumulated, streaming: true };
+                  return updated;
+                });
+              }
+            } else if (parsed.type === 'error' && !started) {
+              started = true;
+              setGuestMessages(prev => [...prev, { role: 'ai', text: lang === 'sw' ? 'Samahani, hitilafu imetokea.' : 'Sorry, something went wrong.' }]);
+            } else if (parsed.type === 'done' && typeof parsed.messages_remaining === 'number') {
+              setGuestRemaining(parsed.messages_remaining);
+            }
+          } catch { /* ignore malformed SSE lines */ }
+        }
       }
-      setGuestMessages(prev => [...prev, { role: 'ai', text: data.reply }]);
-      setGuestRemaining(data.messages_remaining ?? 0);
+
+      if (started) {
+        // Drop the streaming flag so the typing caret disappears.
+        setGuestMessages(prev => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last?.role === 'ai') updated[updated.length - 1] = { role: 'ai', text: last.text };
+          return updated;
+        });
+      } else {
+        setGuestMessages(prev => [...prev, { role: 'ai', text: lang === 'sw' ? 'Samahani, sikuweza kujibu.' : 'Sorry, I could not respond.' }]);
+      }
     } catch {
       setGuestMessages(prev => [...prev, { role: 'ai', text: lang === 'sw' ? 'Samahani, hitilafu ya muunganisho.' : 'Sorry, connection error.' }]);
     } finally {
@@ -426,6 +505,16 @@ export default function Login({ onLogin }: LoginProps) {
               </div>
 
               <form onSubmit={handleSignIn}>
+                {notice && (
+                  <div style={{
+                    marginBottom: 14, padding: '9px 12px',
+                    background: 'rgba(255,204,0,0.14)', border: '1px solid rgba(255,204,0,0.4)',
+                    borderRadius: 9, fontSize: 12, color: '#ffe89a',
+                  }}>
+                    {notice}
+                  </div>
+                )}
+
                 <label style={labelStyle}>{t(lang, 'emailOrPhone')}</label>
                 <input
                   type="text"
@@ -601,12 +690,33 @@ export default function Login({ onLogin }: LoginProps) {
                         maxWidth: '85%', padding: '8px 12px', borderRadius: 12, fontSize: 12, lineHeight: 1.4,
                         background: msg.role === 'user' ? '#FFCC00' : 'rgba(255,255,255,0.14)',
                         color: msg.role === 'user' ? '#1f2717' : 'white',
+                        whiteSpace: msg.role === 'ai' && !msg.streaming ? 'normal' : 'pre-wrap',
                       }}>
-                        {msg.text}
+                        {msg.role === 'ai' && !msg.streaming ? (
+                          <div className="guest-md">
+                            <ReactMarkdown>{msg.text}</ReactMarkdown>
+                          </div>
+                        ) : (
+                          <>
+                            {msg.text}
+                            {msg.streaming && (
+                              <span
+                                aria-hidden="true"
+                                style={{
+                                  display: 'inline-block',
+                                  width: 7, height: 13, marginLeft: 2,
+                                  verticalAlign: 'text-bottom',
+                                  background: 'currentColor',
+                                  animation: 'cursorBlink 1s steps(2) infinite',
+                                }}
+                              />
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
                   ))}
-                  {guestLoading && (
+                  {guestLoading && !(guestMessages[guestMessages.length - 1]?.role === 'ai' && guestMessages[guestMessages.length - 1]?.streaming) && (
                     <div style={{ display: 'flex' }}>
                       <div style={{ background: 'rgba(255,255,255,0.14)', padding: '10px 12px', borderRadius: 12, display: 'flex', gap: 4, alignItems: 'center' }}>
                         {[0, 150, 300].map(d => (

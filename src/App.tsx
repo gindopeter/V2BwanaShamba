@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Layout from './components/Layout';
 import Login from './components/Login';
 import ZoneCard from './components/ZoneCard';
@@ -26,6 +26,22 @@ export interface AuthUser {
   region?: string;
   district?: string;
   farm_size_acres?: number;
+}
+
+// Auto-logout after this many ms of no user interaction (security requirement).
+const INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
+
+// Persist the last view so users return to where they left off after re-login / reload.
+const LAST_VIEW_KEY = 'bwanashamba:lastView';
+
+function readLastView(): string {
+  const fromHash = window.location.hash.slice(1);
+  if (fromHash) return fromHash;
+  try {
+    return localStorage.getItem(LAST_VIEW_KEY) || 'dashboard';
+  } catch {
+    return 'dashboard';
+  }
 }
 
 function getGreeting(lang: Language, firstName: string | null): string {
@@ -67,8 +83,33 @@ export default function App() {
   const [showNewTask, setShowNewTask] = useState(false);
   const [showZoneModal, setShowZoneModal] = useState(false);
   const [editingZone, setEditingZone] = useState<Zone | null>(null);
-  const [currentView, setCurrentView] = useState<string>(() => window.location.hash.slice(1) || 'dashboard');
+  const [currentView, setCurrentView] = useState<string>(readLastView);
   const [chatPrefill, setChatPrefill] = useState<string | null>(null);
+  const [loggedOutNotice, setLoggedOutNotice] = useState<string | null>(null);
+
+  // Centralised logout — clears the server session, then the local user.
+  // `reason` surfaces a notice on the login screen (e.g. inactivity timeout).
+  // `reset` is a clean restart (explicit logout button): forget the last view
+  // and hard-reload so the next login lands on the dashboard.
+  const logout = useCallback(async (opts: { reason?: string; reset?: boolean } = {}) => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch (e) {
+      console.error('Logout request failed', e);
+    }
+    if (opts.reset) {
+      try {
+        localStorage.removeItem(LAST_VIEW_KEY);
+      } catch {
+        /* storage unavailable */
+      }
+      window.location.hash = '';
+      window.location.reload();
+      return;
+    }
+    setLoggedOutNotice(opts.reason ?? null);
+    setUser(null);
+  }, []);
 
   // Keep URL hash in sync with the current view
   const navigate = (view: string) => {
@@ -88,6 +129,18 @@ export default function App() {
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
+
+  // Remember the last view, and reflect a storage-restored view in the URL hash.
+  useEffect(() => {
+    try {
+      localStorage.setItem(LAST_VIEW_KEY, currentView);
+    } catch {
+      /* storage unavailable — fall back to hash only */
+    }
+    if (window.location.hash.slice(1) !== currentView) {
+      window.location.hash = currentView;
+    }
+  }, [currentView]);
 
   const lang: Language = (user?.language as Language) || 'en';
 
@@ -123,6 +176,30 @@ export default function App() {
       loadData();
     }
   }, [user]);
+
+  // Auto-logout after 15 minutes of inactivity (security requirement).
+  useEffect(() => {
+    if (!user) return;
+
+    let timer: ReturnType<typeof setTimeout>;
+    const resetTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        logout({ reason: t(lang, 'sessionTimedOut') });
+      }, INACTIVITY_LIMIT_MS);
+    };
+
+    const events: (keyof WindowEventMap)[] = [
+      'mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click',
+    ];
+    events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }));
+    resetTimer();
+
+    return () => {
+      clearTimeout(timer);
+      events.forEach(e => window.removeEventListener(e, resetTimer));
+    };
+  }, [user, lang, logout]);
 
   const handleTaskAction = async (id: number, action: string) => {
     const previous = tasks;
@@ -191,13 +268,18 @@ export default function App() {
   }
 
   if (!user) {
-    return <Login onLogin={(u) => setUser(u)} />;
+    return (
+      <Login
+        notice={loggedOutNotice}
+        onLogin={(u) => {
+          setLoggedOutNotice(null);
+          setUser(u);
+        }}
+      />
+    );
   }
 
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-    setUser(null);
-  };
+  const handleLogout = () => logout({ reset: true });
 
   const pendingCount = tasks.filter(t => t.status === 'Pending').length;
   const todayTasks = tasks.filter(t => {

@@ -150,14 +150,61 @@ Current Date: ${new Date().toISOString().split('T')[0]}`;
           }))
       : [];
 
+    const contents = [...priorTurns, { role: 'user', parts: [{ text: message }] }];
+    const remaining = Math.max(0, remainingMessages);
+
+    // ── Streaming path — emit tokens as SSE so the UI can type them out ─────────
+    if (req.body?.stream === true) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders();
+
+      let clientDisconnected = false;
+      res.on('close', () => { clientDisconnected = true; });
+
+      try {
+        const streamResp = await ai.models.generateContentStream({
+          model: 'gemini-3-flash-preview',
+          contents,
+          config: { systemInstruction },
+        });
+
+        let any = false;
+        for await (const chunk of streamResp) {
+          if (clientDisconnected) break;
+          const piece = chunk.text;
+          if (piece) {
+            any = true;
+            res.write(`data: ${JSON.stringify({ type: 'text', content: piece })}\n\n`);
+          }
+        }
+        if (!any && !clientDisconnected) {
+          res.write(`data: ${JSON.stringify({ type: 'text', content: 'I could not generate a response.' })}\n\n`);
+        }
+      } catch (streamErr: any) {
+        console.error('[guest-chat] stream error:', streamErr.message);
+        if (!clientDisconnected) {
+          res.write(`data: ${JSON.stringify({ type: 'error', message: 'Failed to generate a response.' })}\n\n`);
+        }
+      }
+
+      if (!clientDisconnected) {
+        res.write(`data: ${JSON.stringify({ type: 'done', messages_remaining: remaining })}\n\n`);
+        res.end();
+      }
+      return;
+    }
+
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [...priorTurns, { role: 'user', parts: [{ text: message }] }],
+      contents,
       config: { systemInstruction },
     });
 
     const reply = response.text || 'I could not generate a response.';
-    res.json({ reply, messages_remaining: Math.max(0, remainingMessages) });
+    res.json({ reply, messages_remaining: remaining });
   } catch (err: any) {
     console.error('[guest-chat] Error:', err.message);
     res.status(500).json({ error: 'Failed to process request' });

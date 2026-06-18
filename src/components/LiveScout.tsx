@@ -1113,7 +1113,7 @@ registerProcessor('pcm-capture-processor', PCMCaptureProcessor);
                   )}
                 </div>
               ))}
-              {isProcessing && (
+              {isProcessing && !(messages[messages.length - 1]?.role === 'ai' && messages[messages.length - 1]?.text.length > 0) && (
                 <div className="flex gap-3">
                   <div className="w-7 h-7 rounded-lg bg-[#035925]/10 flex items-center justify-center shrink-0 mt-0.5">
                     <svg className="w-3.5 h-3.5 text-[#035925]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>

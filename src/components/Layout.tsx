@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { LayoutDashboard, MessageSquare, Map as MapIcon, Settings, LogOut, BarChart2, X, Layers, CheckSquare, Send, Maximize2, Paperclip, CalendarDays } from 'lucide-react';
 import { type Language, t } from '../lib/i18n';
 
@@ -26,6 +27,7 @@ interface ChatMsg {
   role: 'user' | 'ai';
   text: string;
   image?: string;
+  streaming?: boolean;
 }
 
 // ── Mini Chat Panel ────────────────────────────────────────────────────────────
@@ -104,7 +106,7 @@ function MiniChatPanel({
     setMessages(prev => [...prev, { role: 'user', text: messageText, image: imageSnapshot || undefined }]);
     setSending(true);
     try {
-      const body: Record<string, unknown> = { message: messageText };
+      const body: Record<string, unknown> = { message: messageText, stream: true };
       if (conversationId) body.conversationId = conversationId;
       if (imageSnapshot) {
         const compressed = await compressImage(imageSnapshot);
@@ -118,16 +120,77 @@ function MiniChatPanel({
         credentials: 'include',
         body: JSON.stringify(body),
       });
-      const data = await res.json();
 
-      // Persist the conversation ID so LiveScout can continue it
-      if (data.conversationId) {
-        setConversationId(data.conversationId);
-        conversationIdRef.current = data.conversationId;
-        sessionStorage.setItem('bwana_mini_conv_id', String(data.conversationId));
+      const rememberConversation = (id: unknown) => {
+        if (!id) return;
+        setConversationId(id as number);
+        conversationIdRef.current = id as number;
+        sessionStorage.setItem('bwana_mini_conv_id', String(id));
+      };
+
+      const contentType = res.headers.get('content-type') || '';
+
+      // Non-stream response (older server or error) — fall back to all-at-once.
+      if (!contentType.includes('text/event-stream') || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        rememberConversation(data.conversationId);
+        setMessages(prev => [...prev, { role: 'ai', text: data.reply || '...' }]);
+        return;
       }
 
-      setMessages(prev => [...prev, { role: 'ai', text: data.reply || '...' }]);
+      // Streaming path — type the reply out token-by-token as it arrives.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let accumulated = '';
+      let started = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            if (parsed.type === 'text' && parsed.content) {
+              accumulated += parsed.content;
+              if (!started) {
+                started = true;
+                // Keep `sending` true so the input stays locked until the stream
+                // ends; the dots hide on their own once this streaming message
+                // appears, and the caret signals ongoing activity.
+                setMessages(prev => [...prev, { role: 'ai', text: accumulated, streaming: true }]);
+              } else {
+                setMessages(prev => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = { role: 'ai', text: accumulated, streaming: true };
+                  return updated;
+                });
+              }
+            } else if (parsed.type === 'error' && !started) {
+              started = true;
+              setMessages(prev => [...prev, { role: 'ai', text: parsed.message || (lang === 'sw' ? 'Samahani, jaribu tena.' : 'Sorry, please try again.') }]);
+            } else if ((parsed.type === 'start' || parsed.type === 'done') && parsed.conversationId) {
+              rememberConversation(parsed.conversationId);
+            }
+          } catch { /* ignore malformed SSE lines */ }
+        }
+      }
+
+      if (started) {
+        // Drop the streaming flag so the message renders as formatted markdown.
+        setMessages(prev => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last?.role === 'ai') updated[updated.length - 1] = { role: 'ai', text: last.text };
+          return updated;
+        });
+      } else {
+        setMessages(prev => [...prev, { role: 'ai', text: '...' }]);
+      }
     } catch {
       setMessages(prev => [...prev, { role: 'ai', text: lang === 'sw' ? 'Samahani, jaribu tena.' : 'Sorry, please try again.' }]);
     }
@@ -155,6 +218,22 @@ function MiniChatPanel({
         boxShadow: '0 -12px 40px rgba(0,0,0,0.5)',
       }}
     >
+      <style>{`
+        @keyframes cursorBlink { 0%,100% { opacity:1; } 50% { opacity:0; } }
+        .mini-md > :first-child { margin-top: 0; }
+        .mini-md > :last-child { margin-bottom: 0; }
+        .mini-md p { margin: 0 0 6px; }
+        .mini-md ul, .mini-md ol { margin: 4px 0 6px; padding-left: 18px; }
+        .mini-md li { margin: 2px 0; }
+        .mini-md li::marker { color: rgba(255,255,255,0.55); }
+        .mini-md strong { font-weight: 700; color: #fff; }
+        .mini-md em { font-style: italic; }
+        .mini-md a { color: #ffe86b; text-decoration: underline; }
+        .mini-md h1, .mini-md h2, .mini-md h3, .mini-md h4 { font-size: 12px; font-weight: 700; margin: 8px 0 4px; color: #fff; }
+        .mini-md code { background: rgba(255,255,255,0.14); padding: 1px 4px; border-radius: 4px; }
+        .mini-md pre { background: rgba(0,0,0,0.3); padding: 8px; border-radius: 8px; overflow-x: auto; margin: 4px 0 6px; }
+        .mini-md pre code { background: none; padding: 0; }
+      `}</style>
       {/* Header */}
       <div style={{
         padding: '12px 14px 0',
@@ -254,14 +333,35 @@ function MiniChatPanel({
                       color: m.role === 'user' ? 'white' : 'rgba(255,255,255,0.88)',
                       fontSize: 12, lineHeight: 1.5,
                       border: m.role === 'ai' ? '1px solid rgba(255,255,255,0.07)' : 'none',
+                      whiteSpace: m.role === 'ai' && !m.streaming ? 'normal' : 'pre-wrap',
                     }}>
-                      {m.text}
+                      {m.role === 'ai' && !m.streaming ? (
+                        <div className="mini-md">
+                          <ReactMarkdown>{m.text}</ReactMarkdown>
+                        </div>
+                      ) : (
+                        <>
+                          {m.text}
+                          {m.streaming && (
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                display: 'inline-block',
+                                width: 6, height: 12, marginLeft: 2,
+                                verticalAlign: 'text-bottom',
+                                background: 'currentColor',
+                                animation: 'cursorBlink 1s steps(2) infinite',
+                              }}
+                            />
+                          )}
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
               </div>
             ))}
-            {sending && (
+            {sending && !(messages[messages.length - 1]?.role === 'ai' && messages[messages.length - 1]?.streaming) && (
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 7 }}>
                 <div style={{ width: 24, height: 24, borderRadius: 8, background: '#002c11', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ffe86b" strokeWidth="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
@@ -313,6 +413,7 @@ function MiniChatPanel({
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && send()}
+              disabled={sending}
               placeholder={attachedImage ? (lang === 'sw' ? 'Ongeza ujumbe (hiari)...' : 'Add a message (optional)…') : (lang === 'sw' ? 'Uliza kuhusu shamba lako...' : 'Ask about your farm…')}
               style={{
                 flex: 1, height: 38, borderRadius: 12,
@@ -320,6 +421,7 @@ function MiniChatPanel({
                 border: '1px solid rgba(255,255,255,0.1)',
                 color: 'white', padding: '0 12px', fontSize: 16,
                 outline: 'none', fontFamily: "'Lato',sans-serif",
+                opacity: sending ? 0.55 : 1,
               }}
             />
             <button
