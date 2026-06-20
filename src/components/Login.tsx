@@ -3,31 +3,22 @@ import ReactMarkdown from 'react-markdown';
 import Register from './Register';
 import { type Language, t } from '../lib/i18n';
 
+type Panel = 'signin' | 'register' | 'chat';
+
 interface LoginProps {
   onLogin: (user: any) => void;
   notice?: string | null;
+  /** Which panel to open on mount (e.g. when arriving from the marketing landing). */
+  initialPanel?: Panel;
+  /** Return to the marketing landing page. */
+  onExit?: () => void;
 }
-
-type Panel = 'landing' | 'signin' | 'register' | 'chat';
 
 interface GuestMessage {
   role: 'user' | 'ai';
   text: string;
   streaming?: boolean;
 }
-
-const TYPING_PHRASES: Record<'en' | 'sw', string[]> = {
-  en: [
-    'Get crop health tips...',
-    'Check market prices...',
-    'Speak with an agronomist...',
-  ],
-  sw: [
-    'Pata ushauri wa afya ya mazao...',
-    'Angalia bei za soko...',
-    'Ongea na mtaalamu wa kilimo...',
-  ],
-};
 
 const ANIMATIONS = `
 @keyframes sheetUp {
@@ -41,6 +32,63 @@ const ANIMATIONS = `
 @keyframes cursorBlink {
   0%,100% { opacity:1; }
   50%     { opacity:0; }
+}
+.auth-sheet {
+  --auth-sheet-bottom: max(14px, env(safe-area-inset-bottom, 0px));
+  --auth-sheet-padding: 14px;
+  --auth-sheet-radius: 22px;
+  left: 0;
+  right: 0;
+  bottom: var(--auth-sheet-bottom);
+  width: min(calc(100vw - 28px), 430px);
+  max-height: min(88vh, 720px);
+  margin: 0 auto;
+  overflow: hidden;
+}
+.auth-sheet--register {
+  /* Fill nearly the whole phone screen so the form fits without scrolling.
+     dvh tracks the *visible* viewport (excludes mobile browser chrome). */
+  max-height: calc(100dvh - var(--auth-sheet-bottom) - 12px);
+  overflow-y: auto;
+}
+.auth-sheet--chat {
+  height: min(74vh, 620px);
+  max-height: calc(100vh - 32px);
+}
+@media (min-width: 768px) {
+  .auth-sheet {
+    --auth-sheet-padding: 22px;
+    --auth-sheet-radius: 26px;
+    top: 50%;
+    bottom: auto;
+    width: min(calc(100vw - 72px), 560px);
+    padding: 22px;
+    border-radius: 26px;
+    translate: 0 -50%;
+  }
+  .auth-sheet--signin {
+    width: min(calc(100vw - 72px), 520px);
+  }
+  .auth-sheet--register {
+    width: min(calc(100vw - 72px), 680px);
+    max-height: min(86vh, 780px);
+  }
+  .auth-sheet--chat {
+    width: min(calc(100vw - 72px), 720px);
+    height: min(76vh, 700px);
+  }
+}
+@media (min-width: 1180px) {
+  .auth-sheet--signin {
+    width: 560px;
+  }
+  .auth-sheet--register {
+    width: 740px;
+  }
+  .auth-sheet--chat {
+    width: 820px;
+    height: min(78vh, 760px);
+  }
 }
 .guest-md > :first-child { margin-top: 0; }
 .guest-md > :last-child { margin-bottom: 0; }
@@ -59,10 +107,9 @@ const ANIMATIONS = `
 
 const sharedSheetStyle: React.CSSProperties = {
   position: 'fixed',
-  bottom: 18,
   zIndex: 30,
-  borderRadius: 22,
-  padding: 14,
+  borderRadius: 'var(--auth-sheet-radius)',
+  padding: 'var(--auth-sheet-padding)',
   background: 'rgba(12,30,18,0.82)',
   border: '1px solid rgba(255,255,255,0.10)',
   boxShadow: '0 18px 38px rgba(0,0,0,0.4)',
@@ -95,12 +142,12 @@ const inputStyle: React.CSSProperties = {
   fontSize: 16,
 };
 
-export default function Login({ onLogin, notice }: LoginProps) {
+export default function Login({ onLogin, notice, initialPanel, onExit }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [panel, setPanel] = useState<Panel>(notice ? 'signin' : 'landing');
+  const [panel, setPanel] = useState<Panel>(initialPanel ?? 'signin');
   const [lang, setLang] = useState<Language>('en');
 
   const [guestMessages, setGuestMessages] = useState<GuestMessage[]>([]);
@@ -110,36 +157,6 @@ export default function Login({ onLogin, notice }: LoginProps) {
   const [guestLimitMsg, setGuestLimitMsg] = useState('');
   const [guestRemaining, setGuestRemaining] = useState(10);
   const chatEndRef = useRef<HTMLDivElement>(null);
-
-  const [typingText, setTypingText] = useState('');
-
-  useEffect(() => {
-    let active = true;
-    let phraseIndex = 0;
-    const phrases = TYPING_PHRASES[lang === 'sw' ? 'sw' : 'en'];
-    const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
-
-    const run = async () => {
-      while (active) {
-        const word = phrases[phraseIndex % phrases.length];
-        for (let i = 0; i <= word.length; i++) {
-          if (!active) return;
-          setTypingText(word.substring(0, i));
-          await sleep(80);
-        }
-        await sleep(2000);
-        for (let i = word.length; i >= 0; i--) {
-          if (!active) return;
-          setTypingText(word.substring(0, i));
-          await sleep(40);
-        }
-        await sleep(400);
-        phraseIndex++;
-      }
-    };
-    run();
-    return () => { active = false; };
-  }, [lang]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -268,13 +285,6 @@ export default function Login({ onLogin, notice }: LoginProps) {
     }
   };
 
-  const handleLandingChat = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!guestInput.trim() || guestLoading || guestLimitReached) return;
-    setPanel('chat');
-    handleGuestChat(e);
-  };
-
   // Register is now rendered as a glass sheet overlay (see bottom of JSX)
 
   return (
@@ -334,117 +344,7 @@ export default function Login({ onLogin, notice }: LoginProps) {
             BwanaShamba
           </div>
 
-          {/* Centre — typing prompt */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '0 4px' }}>
-            <h2
-              style={{
-                margin: 0,
-                fontSize: 'clamp(26px, 7.5vw, 36px)',
-                fontWeight: 600,
-                lineHeight: 1.2,
-                textAlign: 'center',
-                letterSpacing: '-0.02em',
-              }}
-            >
-              {lang === 'sw' ? 'Ninawezaje kukusaidia leo?' : 'How can I help you today?'}
-            </h2>
-
-            {/* Glass chat input */}
-            <form onSubmit={handleLandingChat} style={{ width: '100%' }}>
-              <div
-                style={{
-                  width: '100%',
-                  padding: '0 16px',
-                  borderRadius: 16,
-                  background: 'rgba(232,239,222,0.10)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  backdropFilter: 'blur(18px)',
-                  WebkitBackdropFilter: 'blur(18px)',
-                  boxShadow: '0 18px 38px rgba(0,0,0,0.28)',
-                  minHeight: 72,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  boxSizing: 'border-box',
-                }}
-              >
-                <input
-                  type="text"
-                  value={guestInput}
-                  onChange={e => setGuestInput(e.target.value)}
-                  placeholder={typingText || (lang === 'sw' ? 'Niulize swali...' : 'Ask me anything...')}
-                  disabled={guestLoading || guestLimitReached}
-                  style={{
-                    flex: 1,
-                    background: 'transparent',
-                    border: 'none',
-                    outline: 'none',
-                    color: 'white',
-                    fontSize: 16,
-                    fontFamily: 'inherit',
-                    caretColor: 'white',
-                    textAlign: guestInput ? 'left' : 'center',
-                    padding: '20px 0',
-                  }}
-                />
-                {guestInput.trim() && (
-                  <button
-                    type="submit"
-                    disabled={guestLoading}
-                    style={{
-                      width: 38, height: 38, borderRadius: '50%',
-                      background: '#FFCC00', color: '#1f2717',
-                      border: 'none', cursor: guestLoading ? 'not-allowed' : 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      flexShrink: 0, opacity: guestLoading ? 0.5 : 1,
-                      fontFamily: 'inherit',
-                    }}
-                  >
-                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            </form>
-          </div>
-
-          {/* Footer — tagline + CTAs */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-            <p style={{ margin: 0, color: 'rgba(255,255,255,0.72)', fontSize: 13, lineHeight: 1.4, textAlign: 'center' }}>
-              {lang === 'sw'
-                ? 'Kuwawezesha wakulima kupata ushauri wa kitaalamu kidigitali na unaozingatia taarifa za shamba.'
-                : 'Empowering farmers with digital agronomy and data driven insights.'}
-            </p>
-
-            {/* Sign In / Sign Up */}
-            <div style={{ width: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <button
-                onClick={() => setPanel('signin')}
-                style={{
-                  border: 0, minHeight: 48, padding: '0 20px', borderRadius: 999,
-                  fontWeight: 800, fontSize: 14, background: '#FFCC00', color: '#1f2717',
-                  cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-                  boxShadow: '0 16px 28px rgba(0,0,0,0.18)',
-                  display: 'flex', justifyContent: 'center', alignItems: 'center',
-                }}
-              >
-                {t(lang, 'signIn')}
-              </button>
-              <button
-                onClick={() => setPanel('register')}
-                style={{
-                  border: '1px solid rgba(255,255,255,0.18)', minHeight: 48, padding: '0 20px', borderRadius: 999,
-                  fontWeight: 800, fontSize: 14, background: 'transparent', color: 'white',
-                  cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-                  boxShadow: '0 16px 28px rgba(0,0,0,0.18)',
-                  display: 'flex', justifyContent: 'center', alignItems: 'center',
-                }}
-              >
-                {t(lang, 'signUp')}
-              </button>
-            </div>
-          </div>
+          <div style={{ flex: 1 }} />
 
           {/* Language switch */}
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 9, marginTop: 14 }}>
@@ -476,14 +376,13 @@ export default function Login({ onLogin, notice }: LoginProps) {
         {panel === 'signin' && (
           <>
             <div
-              onClick={() => setPanel('landing')}
+              onClick={onExit}
               style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
             />
             <div
+              className="auth-sheet auth-sheet--signin"
               style={{
                 ...sharedSheetStyle,
-                left: 'max(18px, calc(50% - 222px))',
-                right: 'max(18px, calc(50% - 222px))',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -491,7 +390,7 @@ export default function Login({ onLogin, notice }: LoginProps) {
                   {t(lang, 'welcomeBack')}
                 </strong>
                 <button
-                  onClick={() => setPanel('landing')}
+                  onClick={onExit}
                   style={{
                     width: 30, height: 30, border: 0, borderRadius: 999,
                     background: 'rgba(255,255,255,0.12)', color: 'white',
@@ -583,24 +482,21 @@ export default function Login({ onLogin, notice }: LoginProps) {
         {panel === 'register' && (
           <>
             <div
-              onClick={() => setPanel('landing')}
+              onClick={onExit}
               style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)' }}
             />
             <div
+              className="auth-sheet auth-sheet--register"
               style={{
                 ...sharedSheetStyle,
-                left: 'max(18px, calc(50% - 222px))',
-                right: 'max(18px, calc(50% - 222px))',
-                maxHeight: '92vh',
-                overflowY: 'auto',
                 display: 'flex',
                 flexDirection: 'column',
               }}
             >
               <Register
                 onRegister={onLogin}
-                onBack={() => setPanel('landing')}
-                onClose={() => setPanel('landing')}
+                onBack={onExit ?? (() => setPanel('signin'))}
+                onClose={onExit ?? (() => setPanel('signin'))}
                 initialLanguage={lang}
               />
               <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 14 }}>
@@ -626,15 +522,13 @@ export default function Login({ onLogin, notice }: LoginProps) {
         {panel === 'chat' && (
           <>
             <div
-              onClick={() => setPanel('landing')}
+              onClick={onExit}
               style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
             />
             <div
+              className="auth-sheet auth-sheet--chat"
               style={{
                 ...sharedSheetStyle,
-                left: 'max(18px, calc(50% - 222px))',
-                right: 'max(18px, calc(50% - 222px))',
-                maxHeight: '75vh',
                 display: 'flex',
                 flexDirection: 'column',
               }}
@@ -663,7 +557,7 @@ export default function Login({ onLogin, notice }: LoginProps) {
                   )}
                 </div>
                 <button
-                  onClick={() => setPanel('landing')}
+                  onClick={onExit}
                   style={{
                     width: 30, height: 30, border: 0, borderRadius: 999,
                     background: 'rgba(255,255,255,0.12)', color: 'white',

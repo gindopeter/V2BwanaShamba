@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Layout from './components/Layout';
 import Login from './components/Login';
+import LandingPage, { type AuthTarget } from './components/LandingPage';
 import ZoneCard from './components/ZoneCard';
 import NewTaskModal from './components/NewTaskModal';
 import LiveScout from './components/LiveScout';
@@ -86,6 +87,9 @@ export default function App() {
   const [currentView, setCurrentView] = useState<string>(readLastView);
   const [chatPrefill, setChatPrefill] = useState<string | null>(null);
   const [loggedOutNotice, setLoggedOutNotice] = useState<string | null>(null);
+  // For logged-out visitors: marketing landing first, then the auth/chat flow.
+  // null = show the LandingPage; a target = show Login with that panel open.
+  const [authTarget, setAuthTarget] = useState<AuthTarget | null>(null);
 
   // Centralised logout — clears the server session, then the local user.
   // `reason` surfaces a notice on the login screen (e.g. inactivity timeout).
@@ -268,11 +272,22 @@ export default function App() {
   }
 
   if (!user) {
+    // Show the marketing landing first. A pending logout notice (e.g. inactivity
+    // timeout) skips it and drops straight into the sign-in panel.
+    if (authTarget === null && !loggedOutNotice) {
+      return <LandingPage onEnter={setAuthTarget} />;
+    }
     return (
       <Login
         notice={loggedOutNotice}
+        initialPanel={authTarget ?? undefined}
+        onExit={() => {
+          setLoggedOutNotice(null);
+          setAuthTarget(null);
+        }}
         onLogin={(u) => {
           setLoggedOutNotice(null);
+          setAuthTarget(null);
           setUser(u);
         }}
       />
@@ -692,4 +707,3 @@ function WeatherDetailView({ weather, lang }: { weather: any; lang: Language }) 
     </div>
   );
 }
-

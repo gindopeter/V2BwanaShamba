@@ -15,7 +15,7 @@ type Method = 'email' | 'phone';
 
 const lbl: React.CSSProperties = {
   display: 'block',
-  margin: '10px 0 5px',
+  margin: '7px 0 4px',
   color: 'rgba(255,255,255,0.60)',
   fontSize: 10,
   textTransform: 'uppercase',
@@ -454,7 +454,7 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
         </div>
 
         {/* Farm info divider */}
-        <div style={{ margin: '14px 0 4px', paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ margin: '10px 0 2px', paddingTop: 9, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           <p style={{ margin: 0, fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
             {t(lang, 'farmInfo')}
           </p>
