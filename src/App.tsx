@@ -30,7 +30,12 @@ export interface AuthUser {
 }
 
 // Auto-logout after this many ms of no user interaction (security requirement).
+// Mirrors IDLE_TIMEOUT_MS in server/middleware/auth.ts.
 const INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
+
+// While the user is active, refresh the server session at most this often so it
+// doesn't expire during interaction that isn't hitting the API (reading, scrolling).
+const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
 
 // Persist the last view so users return to where they left off after re-login / reload.
 const LAST_VIEW_KEY = 'bwanashamba:lastView';
@@ -115,6 +120,28 @@ export default function App() {
     setUser(null);
   }, []);
 
+  // Catch server-enforced idle expiry: if the client timer didn't fire (e.g. the
+  // tab was asleep), the next API call returns 401 SESSION_TIMEOUT. Wrap fetch
+  // once to turn that into the same in-app "session-expired" signal.
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      const res = await originalFetch(...args);
+      if (res.status === 401) {
+        try {
+          const data = await res.clone().json();
+          if (data?.code === 'SESSION_TIMEOUT') {
+            window.dispatchEvent(new CustomEvent('session-expired'));
+          }
+        } catch {
+          /* non-JSON 401 — not a session timeout */
+        }
+      }
+      return res;
+    };
+    return () => { window.fetch = originalFetch; };
+  }, []);
+
   // Keep URL hash in sync with the current view
   const navigate = (view: string) => {
     window.location.hash = view;
@@ -182,26 +209,55 @@ export default function App() {
   }, [user]);
 
   // Auto-logout after 15 minutes of inactivity (security requirement).
+  // The server enforces the same window (server/middleware/auth.ts); this is the
+  // UX layer that logs the user out and keeps the server session alive while active.
   useEffect(() => {
     if (!user) return;
 
     let timer: ReturnType<typeof setTimeout>;
+    let lastActivity = Date.now();
+    let lastHeartbeat = Date.now();
+
+    const doLogout = () => logout({ reason: t(lang, 'sessionTimedOut') });
+
     const resetTimer = () => {
+      lastActivity = Date.now();
       clearTimeout(timer);
-      timer = setTimeout(() => {
-        logout({ reason: t(lang, 'sessionTimedOut') });
-      }, INACTIVITY_LIMIT_MS);
+      timer = setTimeout(doLogout, INACTIVITY_LIMIT_MS);
+      // Keep the server session alive during interaction that isn't hitting the API.
+      if (Date.now() - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
+        lastHeartbeat = Date.now();
+        fetch('/api/auth/heartbeat', { method: 'POST', credentials: 'include' }).catch(() => {});
+      }
+    };
+
+    // setTimeout is paused while the tab is backgrounded or the device asleep,
+    // so re-check the elapsed idle time whenever the tab becomes active again.
+    const checkOnResume = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastActivity >= INACTIVITY_LIMIT_MS) {
+        doLogout();
+      } else {
+        resetTimer();
+      }
     };
 
     const events: (keyof WindowEventMap)[] = [
       'mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click',
     ];
     events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }));
+    document.addEventListener('visibilitychange', checkOnResume);
+    window.addEventListener('focus', checkOnResume);
+    // Server-enforced expiry (e.g. tab was asleep past the window).
+    window.addEventListener('session-expired', doLogout);
     resetTimer();
 
     return () => {
       clearTimeout(timer);
       events.forEach(e => window.removeEventListener(e, resetTimer));
+      document.removeEventListener('visibilitychange', checkOnResume);
+      window.removeEventListener('focus', checkOnResume);
+      window.removeEventListener('session-expired', doLogout);
     };
   }, [user, lang, logout]);
 

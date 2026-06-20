@@ -9,7 +9,7 @@ import { setupLiveVoiceProxy } from './server/liveVoiceProxy.ts';
 import { GoogleGenAI } from '@google/genai';
 import rateLimit from 'express-rate-limit';
 import { initDatabase, isPostgres, getSqliteDb, getPgPool, dbAll, dbGet, dbRun } from './server/db.ts';
-import { isAuthenticated } from './server/middleware/auth.ts';
+import { isAuthenticated, IDLE_TIMEOUT_MS } from './server/middleware/auth.ts';
 import { TANZANIA_REGIONS } from './server/constants/regions.ts';
 import { TANZANIA_DISTRICT_COORDS } from './server/constants/district_coords.ts';
 import { getDaysToHarvest, getGrowthStage } from './server/constants/crops.ts';
@@ -75,11 +75,13 @@ async function startServer() {
       ? 'dev-only-secret-not-for-production'
       : (() => { throw new Error('SESSION_SECRET must be set in production'); })());
 
+  // maxAge matches the idle timeout; `rolling` (set per-store below) refreshes
+  // it on every request, so the cookie expires 15 min after the last activity.
   const sessionCookieConfig = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax' as const,
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    maxAge: IDLE_TIMEOUT_MS,
   };
 
   let sessionMiddleware: express.RequestHandler;
@@ -91,6 +93,7 @@ async function startServer() {
       secret: sessionSecret,
       store: new PgStore({ pool: getPgPool(), createTableIfMissing: true }),
       resave: false,
+      rolling: true,
       saveUninitialized: false,
       cookie: sessionCookieConfig,
     });
@@ -103,6 +106,7 @@ async function startServer() {
       secret: sessionSecret,
       store: new SqliteStore({ client: getSqliteDb(), expired: { clear: true, intervalMs: 900000 } }),
       resave: false,
+      rolling: true,
       saveUninitialized: false,
       cookie: sessionCookieConfig,
     });

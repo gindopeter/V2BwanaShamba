@@ -48,6 +48,7 @@ router.post('/login', async (req, res) => {
       if (err) return res.status(500).json({ message: 'Session error' });
 
       req.session.userId = user.id;
+      req.session.lastActivity = Date.now();
 
       req.session.save((err) => {
         if (err) return res.status(500).json({ message: 'Session error' });
@@ -76,6 +77,14 @@ router.post('/logout', (req, res) => {
   req.session.destroy(() => {
     res.json({ success: true });
   });
+});
+
+// ─── POST /api/auth/heartbeat ──────────────────────────────────────────────────
+// Keeps the session alive during active use. The isAuthenticated middleware
+// refreshes lastActivity (and returns 401 SESSION_TIMEOUT once idle expires),
+// so the body is intentionally trivial.
+router.post('/heartbeat', isAuthenticated, (_req, res) => {
+  res.json({ ok: true });
 });
 
 // ─── POST /api/auth/register ───────────────────────────────────────────────────
@@ -127,6 +136,7 @@ router.post('/register', async (req, res) => {
     req.session.regenerate((err) => {
       if (err) return res.status(500).json({ message: 'Session error' });
       req.session.userId = newUser.id;
+      req.session.lastActivity = Date.now();
       req.session.save((err) => {
         if (err) return res.status(500).json({ message: 'Session error' });
         res.json(newUser);
@@ -232,6 +242,7 @@ router.post('/verify-otp', otpRateLimit, async (req, res) => {
     req.session.regenerate((err) => {
       if (err) return res.status(500).json({ message: 'Session error' });
       req.session.userId = newUser.id;
+      req.session.lastActivity = Date.now();
       req.session.save((err) => {
         if (err) return res.status(500).json({ message: 'Session error' });
         res.json(newUser);
