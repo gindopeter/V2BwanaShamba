@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "start": "node --import tsx server.ts",
-    "build": "vite build",
+    "build": "vite build && cp landing/index.html dist/public/index.html && cp landing/landing.css dist/public/landing.css",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"

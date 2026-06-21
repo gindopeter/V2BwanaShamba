@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import http from 'http';
+import fs from 'fs';
 import express from 'express';
 import session from 'express-session';
 import path from 'path';
@@ -493,7 +494,15 @@ Jibu kwa JSON tu, bila markdown:
 
   if (process.env.NODE_ENV === 'production') {
     const distPath = path.join(__dirname, 'dist/public');
+    // Serves the static landing (index.html) at /, plus /landing.css, /assets,
+    // robots.txt, sitemap.xml and the built SPA bundles under /assets.
     app.use(express.static(distPath));
+    // The SPA shell ships as app.html — serve it for every /app route, including
+    // client-side deep links like /app or /app#dashboard.
+    app.get(['/app', '/app/*'], (_req, res) => {
+      res.sendFile(path.join(distPath, 'app.html'));
+    });
+    // Anything else falls back to the marketing landing.
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
@@ -512,9 +521,36 @@ Jibu kwa JSON tu, bila markdown:
         // which works for both the local preview and the public proxy URL.
         hmr: { server: httpServer },
       },
-      appType: 'spa',
+      // 'custom' (not 'spa') so Vite doesn't auto-serve an index at / — we own
+      // routing: static landing at /, SPA shell (app.html) under /app.
+      appType: 'custom',
     });
+    // Vite handles /src, /@vite, HMR and /assets (publicDir) — falls through otherwise.
     app.use(vite.middlewares);
+
+    const landingDir = path.join(__dirname, 'landing');
+    const appHtmlPath = path.join(__dirname, 'app.html');
+
+    // Marketing landing at the root.
+    app.get('/', (_req, res) => {
+      res.type('html').send(fs.readFileSync(path.join(landingDir, 'index.html'), 'utf-8'));
+    });
+    app.get('/landing.css', (_req, res) => {
+      res.type('css').send(fs.readFileSync(path.join(landingDir, 'landing.css'), 'utf-8'));
+    });
+
+    // SPA shell for every /app route, transformed so Vite injects HMR + the
+    // React refresh runtime.
+    app.get(['/app', '/app/*'], async (req, res, next) => {
+      try {
+        const raw = fs.readFileSync(appHtmlPath, 'utf-8');
+        const html = await vite.transformIndexHtml(req.originalUrl, raw);
+        res.type('html').send(html);
+      } catch (e) {
+        vite.ssrFixStacktrace(e as Error);
+        next(e);
+      }
+    });
   }
 
   httpServer.listen(port, () => {

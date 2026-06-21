@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /$
+Allow: /assets/
+Disallow: /app
+Disallow: /api/
+
+Sitemap: https://bwanashamba.com/sitemap.xml

@@ -26,5 +26,10 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist/public',
+    rollupOptions: {
+      // The SPA ships as app.html so the static marketing landing can own
+      // index.html (served at the root domain). Assets stay under /assets.
+      input: path.resolve(__dirname, 'app.html'),
+    },
   },
 });
