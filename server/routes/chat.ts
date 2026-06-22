@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { GoogleGenAI } from '@google/genai';
+import { llm, MODELS } from '../services/llm/index.ts';
 import { dbAll, dbGet, dbRun } from '../db.ts';
 import { isAuthenticated } from '../middleware/auth.ts';
 import { getFarmContext, chatViaGeminiDirect, chatViaGeminiDirectStream } from '../services/gemini.ts';
 import { chatViaADK, createADKStreamFetch } from '../services/adk.ts';
+import { getMemoryContext, extractAndSaveMemories } from '../services/memory.ts';
 import { issueLiveToken } from '../liveVoiceProxy.ts';
 import { detectLanguage, languageDirective } from '../services/language.ts';
 
@@ -122,10 +123,7 @@ router.post('/guest', async (req, res) => {
     const guestCount = guestLog ? guestLog.message_count + 1 : 1;
     const remainingMessages = GUEST_LIMIT - guestCount;
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'AI service unavailable' });
-
-    const ai = new GoogleGenAI({ apiKey });
+    if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: 'AI service unavailable' });
 
     const langDirective = languageDirective(detectLanguage(message));
     const systemInstruction = `${langDirective ? langDirective + '\n\n' : ''}LANGUAGE RULE — HIGHEST PRIORITY: Look at the language of the user's current message only. If it is English, respond entirely in English. If it is Kiswahili, respond entirely in Kiswahili. Do NOT use prior messages to decide language — only the current message matters. Switch immediately whenever the user switches languages.
@@ -165,21 +163,12 @@ Current Date: ${new Date().toISOString().split('T')[0]}`;
       res.on('close', () => { clientDisconnected = true; });
 
       try {
-        const streamResp = await ai.models.generateContentStream({
-          model: 'gemini-3-flash-preview',
-          contents,
-          config: { systemInstruction },
-        });
-
         let any = false;
-        for await (const chunk of streamResp) {
-          if (clientDisconnected) break;
-          const piece = chunk.text;
-          if (piece) {
-            any = true;
-            res.write(`data: ${JSON.stringify({ type: 'text', content: piece })}\n\n`);
-          }
-        }
+        await llm.generateStream({ contents, systemInstruction }, (piece) => {
+          if (clientDisconnected) return;
+          any = true;
+          res.write(`data: ${JSON.stringify({ type: 'text', content: piece })}\n\n`);
+        });
         if (!any && !clientDisconnected) {
           res.write(`data: ${JSON.stringify({ type: 'text', content: 'I could not generate a response.' })}\n\n`);
         }
@@ -197,13 +186,7 @@ Current Date: ${new Date().toISOString().split('T')[0]}`;
       return;
     }
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents,
-      config: { systemInstruction },
-    });
-
-    const reply = response.text || 'I could not generate a response.';
+    const reply = (await llm.generate({ contents, systemInstruction })) || 'I could not generate a response.';
     res.json({ reply, messages_remaining: remaining });
   } catch (err: any) {
     console.error('[guest-chat] Error:', err.message);
@@ -284,12 +267,16 @@ router.post('/', isAuthenticated, async (req, res) => {
         (userProfile.district ? `Weather: call get_weather_forecast with district="${userProfile.district}" region="${userProfile.region || ''}" for accurate local conditions\n` : '') +
         `[END FARM CONTEXT]\n\n`;
     }
+    // Remembered facts about this farmer (the "learning" layer) — injected so
+    // the ADK agents personalise advice the same way the direct-Gemini path does.
+    const memoryContext = await getMemoryContext(userId);
+
     // Detect the language of the user's message so we can force the AI to
     // reply in the same language regardless of any English farm-context above.
     const responseLang = detectLanguage(message || '');
     const langDirective = languageDirective(responseLang);
     const langPrefix = langDirective ? `[${langDirective}]\n\n` : '';
-    const enrichedMessage = langPrefix + farmContextPrefix + (message || 'Analyze this image.');
+    const enrichedMessage = langPrefix + farmContextPrefix + memoryContext + (message || 'Analyze this image.');
 
     // ── Streaming path ──────────────────────────────────────────────────────────
     if (wantStream) {
@@ -425,6 +412,10 @@ router.post('/', isAuthenticated, async (req, res) => {
             convId
           );
         }
+
+        // Learn durable facts about the farmer in the background — do not await,
+        // so the response is not delayed.
+        void extractAndSaveMemories(userId, message || '', fullReply);
       }
 
       if (!clientDisconnected) {
@@ -494,6 +485,9 @@ router.post('/', isAuthenticated, async (req, res) => {
       );
     }
 
+    // Learn durable facts about the farmer in the background — do not await.
+    void extractAndSaveMemories(userId, message || '', reply!);
+
     res.json({ reply: reply!, conversationId: convId, agent: agentName });
   } catch (err: any) {
     console.error('[chat] Error:', err.message);
@@ -510,14 +504,12 @@ router.post('/analyze-crop', isAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'zone_id and image are required' });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'Gemini API key is not configured.' });
+    if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: 'Gemini API key is not configured.' });
 
     const userId = req.session.userId!;
     const zone = await dbGet('SELECT * FROM zones WHERE id = ? AND user_id = ?', zone_id, userId);
     if (!zone) return res.status(404).json({ error: 'Zone not found.' });
 
-    const ai = new GoogleGenAI({ apiKey });
     const growthDay = Math.ceil(
       Math.abs(Date.now() - new Date(zone.planting_date).getTime()) / (1000 * 60 * 60 * 24)
     );
@@ -538,8 +530,7 @@ Analyze this image and provide:
 
 Be concise and actionable.`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+    const analysisText = (await llm.generate({
       contents: [
         {
           parts: [
@@ -548,9 +539,7 @@ Be concise and actionable.`;
           ],
         },
       ],
-    });
-
-    const analysisText = response.text || 'Could not analyze the image.';
+    })) || 'Could not analyze the image.';
 
     await dbRun(
       'INSERT INTO logs (zone_id, message, severity) VALUES (?, ?, ?)',
@@ -595,13 +584,11 @@ router.post('/tts', isAuthenticated, async (req, res) => {
   if (!text || typeof text !== 'string' || !text.trim()) {
     return res.status(400).json({ error: 'text is required' });
   }
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'Gemini API key not configured' });
+  if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: 'Gemini API key not configured' });
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const result = await (ai.models as any).generateContent({
-      model: 'gemini-2.5-flash-preview-tts',
+    const result = await llm.generateRaw({
+      model: MODELS.tts,
       contents: [{ role: 'user', parts: [{ text: text.trim() }] }],
       config: {
         responseModalities: ['AUDIO'],
