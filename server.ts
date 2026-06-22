@@ -7,7 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { setupLiveVoiceProxy } from './server/liveVoiceProxy.ts';
 
-import { GoogleGenAI } from '@google/genai';
+import { llm, MODELS } from './server/services/llm/index.ts';
 import rateLimit from 'express-rate-limit';
 import { initDatabase, isPostgres, getSqliteDb, getPgPool, dbAll, dbGet, dbRun } from './server/db.ts';
 import { isAuthenticated, IDLE_TIMEOUT_MS } from './server/middleware/auth.ts';
@@ -325,13 +325,12 @@ KANUNI: Taja jina la eneo, toa ushauri maalum (dawa/mbolea/kipimo), weka kipaumb
 Jibu kwa JSON tu, bila markdown:
 {"recommendations":[{"priority":"high|medium|low","icon":"emoji","title":"Eneo – Hatua","description":"Maelezo maalum na bidhaa/kipimo/muda"}]}`;
 
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-      const result = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+      const resultText = await llm.generate({
+        model: MODELS.planning,
         contents: [{ role: 'user', parts: [{ text: isSwahili ? swPrompt : enPrompt }] }],
       });
 
-      const raw = (result.text || '{}')
+      const raw = (resultText || '{}')
         .replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       const parsed = JSON.parse(raw);
 

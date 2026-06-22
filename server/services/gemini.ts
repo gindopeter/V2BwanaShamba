@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { llm } from './llm/index.ts';
 import { dbAll, dbGet } from '../db.ts';
 import { getDaysToHarvest, getGrowthStage } from '../constants/crops.ts';
 import { TANZANIA_DISTRICT_COORDS } from '../constants/district_coords.ts';
@@ -236,10 +236,6 @@ export async function chatViaGeminiDirect(
   userId?: number,
   responseLang?: DetectedLanguage | null
 ): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('Gemini API key not configured');
-
-  const ai = new GoogleGenAI({ apiKey });
   const systemInstruction = await buildChatSystemInstruction(userId, responseLang);
 
   if (image) {
@@ -249,12 +245,8 @@ export async function chatViaGeminiDirect(
     }
   }
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents,
-    config: { systemInstruction },
-  });
-  return response.text || 'I could not generate a response.';
+  const text = await llm.generate({ contents, systemInstruction });
+  return text || 'I could not generate a response.';
 }
 
 /**
@@ -271,10 +263,6 @@ export async function chatViaGeminiDirectStream(
   responseLang: DetectedLanguage | null | undefined,
   onChunk: (piece: string) => void
 ): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('Gemini API key not configured');
-
-  const ai = new GoogleGenAI({ apiKey });
   const systemInstruction = await buildChatSystemInstruction(userId, responseLang);
 
   if (image) {
@@ -284,20 +272,7 @@ export async function chatViaGeminiDirectStream(
     }
   }
 
-  const stream = await ai.models.generateContentStream({
-    model: 'gemini-3-flash-preview',
-    contents,
-    config: { systemInstruction },
-  });
-
-  let full = '';
-  for await (const chunk of stream) {
-    const piece = chunk.text;
-    if (piece) {
-      full += piece;
-      onChunk(piece);
-    }
-  }
+  const full = await llm.generateStream({ contents, systemInstruction }, onChunk);
   return full || 'I could not generate a response.';
 }
 
