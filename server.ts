@@ -20,6 +20,7 @@ import authRoutes from './server/routes/auth.ts';
 import zoneRoutes from './server/routes/zones.ts';
 import taskRoutes from './server/routes/tasks.ts';
 import chatRoutes from './server/routes/chat.ts';
+import memoryRoutes from './server/routes/memory.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -122,6 +123,7 @@ async function startServer() {
   app.use('/api/auth', authRoutes);
   app.use('/api/zones', zoneRoutes);
   app.use('/api/tasks', taskRoutes);
+  app.use('/api/memory', memoryRoutes);
 
   // Per-user rate limit on AI endpoints — prevents a single account draining Gemini quota.
   // All routes under /api/chat and /api/recommendations are auth-gated, so userId is always set.

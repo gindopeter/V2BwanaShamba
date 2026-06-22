@@ -4,6 +4,7 @@ import { dbAll, dbGet, dbRun } from '../db.ts';
 import { isAuthenticated } from '../middleware/auth.ts';
 import { getFarmContext, chatViaGeminiDirect, chatViaGeminiDirectStream } from '../services/gemini.ts';
 import { chatViaADK, createADKStreamFetch } from '../services/adk.ts';
+import { getMemoryContext, extractAndSaveMemories } from '../services/memory.ts';
 import { issueLiveToken } from '../liveVoiceProxy.ts';
 import { detectLanguage, languageDirective } from '../services/language.ts';
 
@@ -266,12 +267,16 @@ router.post('/', isAuthenticated, async (req, res) => {
         (userProfile.district ? `Weather: call get_weather_forecast with district="${userProfile.district}" region="${userProfile.region || ''}" for accurate local conditions\n` : '') +
         `[END FARM CONTEXT]\n\n`;
     }
+    // Remembered facts about this farmer (the "learning" layer) — injected so
+    // the ADK agents personalise advice the same way the direct-Gemini path does.
+    const memoryContext = await getMemoryContext(userId);
+
     // Detect the language of the user's message so we can force the AI to
     // reply in the same language regardless of any English farm-context above.
     const responseLang = detectLanguage(message || '');
     const langDirective = languageDirective(responseLang);
     const langPrefix = langDirective ? `[${langDirective}]\n\n` : '';
-    const enrichedMessage = langPrefix + farmContextPrefix + (message || 'Analyze this image.');
+    const enrichedMessage = langPrefix + farmContextPrefix + memoryContext + (message || 'Analyze this image.');
 
     // ── Streaming path ──────────────────────────────────────────────────────────
     if (wantStream) {
@@ -407,6 +412,10 @@ router.post('/', isAuthenticated, async (req, res) => {
             convId
           );
         }
+
+        // Learn durable facts about the farmer in the background — do not await,
+        // so the response is not delayed.
+        void extractAndSaveMemories(userId, message || '', fullReply);
       }
 
       if (!clientDisconnected) {
@@ -475,6 +484,9 @@ router.post('/', isAuthenticated, async (req, res) => {
         convId
       );
     }
+
+    // Learn durable facts about the farmer in the background — do not await.
+    void extractAndSaveMemories(userId, message || '', reply!);
 
     res.json({ reply: reply!, conversationId: convId, agent: agentName });
   } catch (err: any) {

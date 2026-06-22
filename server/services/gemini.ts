@@ -1,4 +1,5 @@
 import { llm } from './llm/index.ts';
+import { getMemoryContext } from './memory.ts';
 import { dbAll, dbGet } from '../db.ts';
 import { getDaysToHarvest, getGrowthStage } from '../constants/crops.ts';
 import { TANZANIA_DISTRICT_COORDS } from '../constants/district_coords.ts';
@@ -190,9 +191,10 @@ async function buildChatSystemInstruction(
     ? await dbGet('SELECT region, district, farm_size_acres FROM users WHERE id = ?', userId)
     : null;
 
-  const [farmContext, weatherContext] = await Promise.all([
+  const [farmContext, weatherContext, memoryContext] = await Promise.all([
     getFarmContext(userId),
     fetchWeatherContext(profile?.district ?? undefined, profile?.region ?? undefined),
+    getMemoryContext(userId),
   ]);
 
   const locationLine = profile?.district || profile?.region
@@ -219,7 +221,7 @@ USER DATA: The farm data below is THIS FARMER'S actual data from the app. Always
 ${locationLine}
 ${weatherContext}
 ${farmContext}
-
+${memoryContext}
 Current Date/Time: ${new Date().toLocaleString('en-US', { timeZone: 'Africa/Dar_es_Salaam' })} EAT
 Be concise, practical, and specific. Prioritise advice that is immediately actionable for the farmer.`;
 }

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Lock, User, Shield, Trash2, Plus, Check, AlertCircle, Eye, EyeOff, UserPlus, Edit2, X, UserX, UserCheck, Globe } from 'lucide-react';
+import { Lock, User, Shield, Trash2, Plus, Check, AlertCircle, Eye, EyeOff, UserPlus, Edit2, X, UserX, UserCheck, Globe, Brain } from 'lucide-react';
 import type { AuthUser } from '../App';
 import { type Language, t, TANZANIA_REGIONS } from '../lib/i18n';
+import { fetchMemories, deleteMemory, type Memory } from '../lib/api';
 
 interface SettingsPageProps {
   user: AuthUser;
@@ -10,13 +11,14 @@ interface SettingsPageProps {
 }
 
 export default function SettingsPage({ user, onUserUpdate, lang = 'en' }: SettingsPageProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'password' | 'users'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'password' | 'memory' | 'users'>('profile');
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex gap-2 bg-white border border-[#002c11]/10 rounded-xl p-1.5 shadow-sm flex-wrap">
         <TabButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<User size={16} />} label={t(lang, 'profile')} />
         <TabButton active={activeTab === 'password'} onClick={() => setActiveTab('password')} icon={<Lock size={16} />} label={t(lang, 'changePassword')} />
+        <TabButton active={activeTab === 'memory'} onClick={() => setActiveTab('memory')} icon={<Brain size={16} />} label={t(lang, 'memory')} />
         {user.role === 'admin' && (
           <TabButton active={activeTab === 'users'} onClick={() => setActiveTab('users')} icon={<Shield size={16} />} label={t(lang, 'manageUsers')} />
         )}
@@ -24,6 +26,7 @@ export default function SettingsPage({ user, onUserUpdate, lang = 'en' }: Settin
 
       {activeTab === 'profile' && <ProfileSection user={user} onUserUpdate={onUserUpdate} lang={lang} />}
       {activeTab === 'password' && <PasswordSection lang={lang} />}
+      {activeTab === 'memory' && <MemorySection lang={lang} />}
       {activeTab === 'users' && user.role === 'admin' && <UsersSection currentUserId={user.id} />}
     </div>
   );
@@ -555,6 +558,68 @@ function UsersSection({ currentUserId }: { currentUserId: number }) {
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MemorySection({ lang = 'en' }: { lang?: Language }) {
+  const [memories, setMemories] = useState<Memory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const load = async () => {
+    try {
+      setMemories(await fetchMemories());
+    } catch {
+      setMessage({ type: 'error', text: lang === 'sw' ? 'Imeshindwa kupakia kumbukumbu' : 'Failed to load memory' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleDelete = async (id: number) => {
+    try {
+      await deleteMemory(id);
+      setMemories(prev => prev.filter(m => m.id !== id));
+    } catch {
+      setMessage({ type: 'error', text: lang === 'sw' ? 'Imeshindwa kufuta' : 'Failed to delete' });
+    }
+  };
+
+  return (
+    <div className="bg-white border border-[#002c11]/10 rounded-2xl shadow-sm p-6">
+      <h3 className="text-lg font-bold text-[#002c11] mb-1">{t(lang, 'memoryTitle')}</h3>
+      <p className="text-sm text-[#5d6c7b] mb-6">{t(lang, 'memoryDesc')}</p>
+
+      <StatusMessage message={message} />
+
+      {loading ? (
+        <p className="text-sm text-[#5d6c7b] py-4 text-center">{lang === 'sw' ? 'Inapakia...' : 'Loading...'}</p>
+      ) : memories.length === 0 ? (
+        <p className="text-sm text-[#5d6c7b] py-6 text-center">{t(lang, 'memoryEmpty')}</p>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {memories.map((m) => (
+            <div key={m.id} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
+              <div className="flex items-start gap-3">
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-[#035925]/10 text-[#035925] shrink-0 mt-0.5">
+                  {m.category}
+                </span>
+                <p className="text-sm text-[#002c11]">{m.fact}</p>
+              </div>
+              <button
+                onClick={() => handleDelete(m.id)}
+                className="p-2 text-[#5d6c7b]/60 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all shrink-0"
+                title={t(lang, 'memoryDelete')}
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </div>
