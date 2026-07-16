@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { llm, MODELS } from './llm/index.ts';
 import { dbRun, dbGet } from '../db.ts';
 import { getDaysToHarvest } from '../constants/crops.ts';
 
@@ -67,13 +67,12 @@ Kanuni:
 Jibu kwa JSON tu — bila markdown:
 {"milestones":[{"name":"","date":"YYYY-MM-DD","icon":"","actions":["",""],"completed":false}]}`;
 
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-  const result = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+  const resultText = await llm.generate({
+    model: MODELS.planning,
     contents: [{ role: 'user', parts: [{ text: isSwahili ? swPrompt : enPrompt }] }],
   });
 
-  const raw = (result.text || '{}').replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  const raw = (resultText || '{}').replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   const parsed = JSON.parse(raw);
   const milestones: StoredMilestone[] = (parsed.milestones || []).map((m: any) => ({
     name: m.name || '',

@@ -99,3 +99,24 @@ export async function deleteZone(id: number) {
   if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.message || 'Failed to delete zone'); }
   return res.json();
 }
+
+export interface Memory {
+  id: number;
+  category: string;
+  fact: string;
+  source: string;
+  created_at: string;
+}
+
+export async function fetchMemories(): Promise<Memory[]> {
+  const res = await fetch('/api/memory', { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to load memory');
+  const data = await res.json();
+  return data.memories || [];
+}
+
+export async function deleteMemory(id: number) {
+  const res = await fetch(`/api/memory/${id}`, { method: 'DELETE', credentials: 'include' });
+  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Failed to delete memory'); }
+  return res.json();
+}

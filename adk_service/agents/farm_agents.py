@@ -16,7 +16,10 @@ from adk_service.tools.farm_tools import (
     get_weather_forecast,
 )
 
-MODEL = "gemini-2.5-flash"
+import os
+
+# Single source of truth for the ADK agent model. Override via ADK_MODEL.
+MODEL = os.environ.get("ADK_MODEL", "gemini-2.5-flash")
 
 pest_scout_agent = Agent(
     model=MODEL,

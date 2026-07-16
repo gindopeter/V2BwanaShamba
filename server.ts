@@ -7,7 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { setupLiveVoiceProxy } from './server/liveVoiceProxy.ts';
 
-import { GoogleGenAI } from '@google/genai';
+import { llm, MODELS } from './server/services/llm/index.ts';
 import rateLimit from 'express-rate-limit';
 import { initDatabase, isPostgres, getSqliteDb, getPgPool, dbAll, dbGet, dbRun } from './server/db.ts';
 import { isAuthenticated, IDLE_TIMEOUT_MS } from './server/middleware/auth.ts';
@@ -20,6 +20,7 @@ import authRoutes from './server/routes/auth.ts';
 import zoneRoutes from './server/routes/zones.ts';
 import taskRoutes from './server/routes/tasks.ts';
 import chatRoutes from './server/routes/chat.ts';
+import memoryRoutes from './server/routes/memory.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -122,6 +123,7 @@ async function startServer() {
   app.use('/api/auth', authRoutes);
   app.use('/api/zones', zoneRoutes);
   app.use('/api/tasks', taskRoutes);
+  app.use('/api/memory', memoryRoutes);
 
   // Per-user rate limit on AI endpoints — prevents a single account draining Gemini quota.
   // All routes under /api/chat and /api/recommendations are auth-gated, so userId is always set.
@@ -325,13 +327,12 @@ KANUNI: Taja jina la eneo, toa ushauri maalum (dawa/mbolea/kipimo), weka kipaumb
 Jibu kwa JSON tu, bila markdown:
 {"recommendations":[{"priority":"high|medium|low","icon":"emoji","title":"Eneo – Hatua","description":"Maelezo maalum na bidhaa/kipimo/muda"}]}`;
 
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-      const result = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+      const resultText = await llm.generate({
+        model: MODELS.planning,
         contents: [{ role: 'user', parts: [{ text: isSwahili ? swPrompt : enPrompt }] }],
       });
 
-      const raw = (result.text || '{}')
+      const raw = (resultText || '{}')
         .replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       const parsed = JSON.parse(raw);
 

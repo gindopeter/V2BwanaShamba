@@ -235,6 +235,21 @@ async function createSchema() {
       generated_at TEXT NOT NULL
     )
   `);
+
+  // Durable facts the AI remembers about each farmer (the "learning" layer).
+  await dbExec(`
+    CREATE TABLE IF NOT EXISTS user_memory (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      user_id INTEGER NOT NULL,
+      category TEXT DEFAULT 'other',
+      fact TEXT NOT NULL,
+      source TEXT DEFAULT 'chat',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+  `);
+  await dbExec(`CREATE INDEX IF NOT EXISTS idx_user_memory_user ON user_memory(user_id)`);
 }
 
 async function runMigrations() {
@@ -308,6 +323,11 @@ async function runMigrations() {
       await pgPool.query("CREATE TABLE IF NOT EXISTS zone_plans (zone_id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, milestones TEXT NOT NULL, lang TEXT DEFAULT 'en', generated_at TEXT NOT NULL)");
     } catch {}
 
+    try {
+      await pgPool.query("CREATE TABLE IF NOT EXISTS user_memory (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, category TEXT DEFAULT 'other', fact TEXT NOT NULL, source TEXT DEFAULT 'chat', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+      await pgPool.query("CREATE INDEX IF NOT EXISTS idx_user_memory_user ON user_memory(user_id)");
+    } catch {}
+
   } else {
     const tableInfo = sqliteDb.prepare("PRAGMA table_info(zones)").all() as any[];
     const columnNames = tableInfo.map((c: any) => c.name);
@@ -355,6 +375,11 @@ async function runMigrations() {
 
     try {
       sqliteDb.exec("CREATE TABLE IF NOT EXISTS zone_plans (zone_id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, milestones TEXT NOT NULL, lang TEXT DEFAULT 'en', generated_at TEXT NOT NULL)");
+    } catch {}
+
+    try {
+      sqliteDb.exec("CREATE TABLE IF NOT EXISTS user_memory (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, category TEXT DEFAULT 'other', fact TEXT NOT NULL, source TEXT DEFAULT 'chat', created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)");
+      sqliteDb.exec("CREATE INDEX IF NOT EXISTS idx_user_memory_user ON user_memory(user_id)");
     } catch {}
   }
 }
