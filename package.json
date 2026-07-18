@@ -23,6 +23,7 @@
     "express": "^4.21.2",
     "express-rate-limit": "^8.3.2",
     "express-session": "^1.19.0",
+    "firebase": "^12.16.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "nodemailer": "^8.0.7",

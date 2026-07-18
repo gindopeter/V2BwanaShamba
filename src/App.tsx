@@ -8,6 +8,7 @@ import LiveScout from './components/LiveScout';
 import FarmMap from './components/FarmMap';
 import ActionQueue from './components/ActionQueue';
 import SettingsPage from './components/SettingsPage';
+import CompleteAccountModal from './components/CompleteAccountModal';
 import ZoneModal from './components/ZoneModal';
 import RecommendationsBlock from './components/RecommendationsBlock';
 import Reports from './components/Reports';
@@ -27,6 +28,10 @@ export interface AuthUser {
   region?: string;
   district?: string;
   farm_size_acres?: number;
+  // 1 = OTP-confirmed; 0 = missing or stored unverified (e.g. the phone from
+  // an email-fallback signup). Absent on legacy payloads — treat as verified.
+  email_verified?: number;
+  phone_verified?: number;
 }
 
 // Auto-logout after this many ms of no user interaction (security requirement).
@@ -39,6 +44,23 @@ const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
 
 // Persist the last view so users return to where they left off after re-login / reload.
 const LAST_VIEW_KEY = 'bwanashamba:lastView';
+
+// Reminder to add the second identifier. "Later" snoozes it for 24h (a timestamp
+// in sessionStorage), so it returns after a day even if the same tab stays open.
+// It also returns on a new tab / browser session, and disappears for good once
+// the account is complete.
+const COMPLETE_DISMISS_KEY = 'bwanashamba:completeDismissedAt';
+const COMPLETE_SNOOZE_MS = 24 * 60 * 60 * 1000;
+
+function readCompletionDismissedAt(): number | null {
+  try {
+    const v = sessionStorage.getItem(COMPLETE_DISMISS_KEY);
+    const n = v ? parseInt(v, 10) : NaN;
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
 
 function readLastView(): string {
   const fromHash = window.location.hash.slice(1);
@@ -98,6 +120,8 @@ export default function App() {
   const [currentView, setCurrentView] = useState<string>(readLastView);
   const [chatPrefill, setChatPrefill] = useState<string | null>(null);
   const [loggedOutNotice, setLoggedOutNotice] = useState<string | null>(null);
+  const [showComplete, setShowComplete] = useState(false);
+  const [completionDismissedAt, setCompletionDismissedAt] = useState<number | null>(readCompletionDismissedAt);
   // Logged-out visitors reach the app from the static marketing landing at "/",
   // which links to /app?panel=signin|register|chat. Open that panel on arrival.
   const [authTarget] = useState<AuthTarget>(readAuthTarget);
@@ -267,6 +291,24 @@ export default function App() {
     };
   }, [user, lang, logout]);
 
+  // The completion snooze is time-based, but a live tab won't re-render when the
+  // 24h elapses. Schedule a wake-up to lift the snooze so the banner returns.
+  useEffect(() => {
+    const incomplete = !!user && (
+      !user.phone_number || user.phone_verified === 0 ||
+      !user.email || user.email_verified === 0
+    );
+    if (!incomplete || completionDismissedAt === null) return;
+    const clearSnooze = () => {
+      setCompletionDismissedAt(null);
+      try { sessionStorage.removeItem(COMPLETE_DISMISS_KEY); } catch { /* storage unavailable */ }
+    };
+    const remaining = COMPLETE_SNOOZE_MS - (Date.now() - completionDismissedAt);
+    if (remaining <= 0) { clearSnooze(); return; }
+    const timer = setTimeout(clearSnooze, remaining);
+    return () => clearTimeout(timer);
+  }, [user, completionDismissedAt]);
+
   const handleTaskAction = async (id: number, action: string) => {
     const previous = tasks;
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status: action as any } : t));
@@ -350,6 +392,20 @@ export default function App() {
 
   const handleLogout = () => logout({ reset: true });
 
+  // Nudge users whose account is missing an identifier, or holding one that
+  // was never OTP-confirmed (e.g. the phone from an email-fallback signup).
+  const missingIdentifier: 'phone' | 'email' | null =
+    (!user.phone_number || user.phone_verified === 0) ? 'phone'
+    : (!user.email || user.email_verified === 0) ? 'email'
+    : null;
+  const snoozeActive = completionDismissedAt !== null && (Date.now() - completionDismissedAt) < COMPLETE_SNOOZE_MS;
+  const showCompletionBanner = missingIdentifier !== null && !snoozeActive;
+  const dismissCompletion = () => {
+    const now = Date.now();
+    setCompletionDismissedAt(now);
+    try { sessionStorage.setItem(COMPLETE_DISMISS_KEY, String(now)); } catch { /* storage unavailable */ }
+  };
+
   const pendingCount = tasks.filter(t => t.status === 'Pending').length;
   const todayTasks = tasks.filter(t => {
     const taskDate = new Date(t.scheduled_time).toDateString();
@@ -379,6 +435,34 @@ export default function App() {
 
   return (
     <Layout currentView={currentView} onNavigate={navigate} user={user} onLogout={handleLogout}>
+      {showCompletionBanner && (
+        <div
+          className="px-5 lg:px-8 py-2.5 flex items-center gap-3"
+          style={{ background: '#fffbeb', borderBottom: '1px solid rgba(217,119,6,0.18)' }}
+        >
+          <span className="text-lg flex-shrink-0">{missingIdentifier === 'phone' ? '📱' : '✉️'}</span>
+          <p className="flex-1 text-[12px] text-[#7c5a10] leading-snug">
+            {missingIdentifier === 'phone'
+              ? (user.phone_number
+                  ? (lang === 'sw' ? 'Kamilisha akaunti yako — thibitisha nambari yako ya simu.' : 'Complete your account — verify your mobile number.')
+                  : (lang === 'sw' ? 'Kamilisha akaunti yako — ongeza nambari ya simu ili kuilinda.' : 'Complete your account — add a mobile number to secure it.'))
+              : (lang === 'sw' ? 'Kamilisha akaunti yako — ongeza barua pepe kwa ajili ya kurejesha akaunti.' : 'Complete your account — add an email for account recovery.')}
+          </p>
+          <button
+            onClick={() => setShowComplete(true)}
+            className="flex-shrink-0 h-7 px-3 rounded-lg font-bold text-[11px] text-white transition-all active:scale-[0.97]"
+            style={{ background: '#d97706' }}
+          >
+            {lang === 'sw' ? 'Ongeza sasa' : 'Add now'}
+          </button>
+          <button
+            onClick={dismissCompletion}
+            className="flex-shrink-0 text-[#7c5a10]/60 hover:text-[#7c5a10] text-[11px] font-semibold"
+          >
+            {lang === 'sw' ? 'Baadaye' : 'Later'}
+          </button>
+        </div>
+      )}
       {isDetailView && (
         <div
           className="px-5 lg:px-8 py-3.5 flex items-center justify-between sticky top-0 z-20"
@@ -625,6 +709,15 @@ export default function App() {
             lang={lang}
             maxAreaSize={user?.farm_size_acres}
             usedAcres={zones.filter(z => z.id !== editingZone.id).reduce((sum, z) => sum + z.area_size, 0)}
+          />
+        )}
+
+        {showComplete && (
+          <CompleteAccountModal
+            user={user}
+            lang={lang}
+            onClose={() => setShowComplete(false)}
+            onComplete={(u) => { setUser(u); setShowComplete(false); }}
           />
         )}
       </div>

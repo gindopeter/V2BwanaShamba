@@ -1,5 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { type Language, t, TANZANIA_REGIONS, TANZANIA_DISTRICTS } from '../lib/i18n';
+import {
+  isFirebasePhoneEnabled, startFirebasePhoneVerification, confirmFirebasePhoneCode,
+  type ConfirmationResult,
+} from '../lib/firebasePhone';
 
 interface RegisterProps {
   onRegister: (user: any) => void;
@@ -8,7 +12,7 @@ interface RegisterProps {
   initialLanguage?: Language;
 }
 
-type Step = 'language' | 'method' | 'form' | 'verify';
+type Step = 'language' | 'method' | 'form' | 'verify' | 'email-fallback';
 type Method = 'email' | 'phone';
 
 // ─── shared dark-glass styles (matches sign-in sheet) ─────────────────────────
@@ -133,6 +137,19 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
   const [resendTimer, setResendTimer] = useState(0);
   const [pendingUser, setPendingUser] = useState<any>(null);
   const [devCode, setDevCode] = useState<string | null>(null);
+  // Which channel the phone code went out on: firebase (Google-delivered SMS,
+  // the primary), whatsapp, or sms (Africa's Talking, once OTP_SMS_ENABLED).
+  // Drives the verify-screen copy.
+  const [otpChannel, setOtpChannel] = useState<'firebase' | 'whatsapp' | 'sms'>('whatsapp');
+  // Active Firebase SMS session; the code is confirmed client-side and the
+  // resulting ID token proves phone ownership to the server. The token is
+  // kept so a failed server call can be retried without re-confirming (a
+  // ConfirmationResult is single-use).
+  const firebaseConfirmation = useRef<ConfirmationResult | null>(null);
+  const firebaseIdToken = useRef<string | null>(null);
+  // Set when a phone signup falls back to email verification (no WhatsApp):
+  // the code is sent here instead, and the phone is stored unverified.
+  const [fallbackEmail, setFallbackEmail] = useState('');
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -174,15 +191,56 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
     e.preventDefault();
   };
 
-  const sendOtp = async (formData: typeof form) => {
+  const sendOtp = async (formData: typeof form, opts: { resend?: boolean; forceWhatsApp?: boolean } = {}) => {
     setSending(true); setError('');
+    firebaseConfirmation.current = null;
+    firebaseIdToken.current = null;
+
+    // Firebase first for phone numbers: Google delivers the SMS itself. On any
+    // failure (unconfigured, quota, region policy, reCAPTCHA) fall through to
+    // the server's WhatsApp → email chain.
+    if (method === 'phone' && !opts.forceWhatsApp && isFirebasePhoneEnabled()) {
+      try {
+        firebaseConfirmation.current = await startFirebasePhoneVerification(formData.phone_number, lang);
+        setOtpChannel('firebase');
+        startResendTimer();
+        setSending(false);
+        return true;
+      } catch (err) {
+        console.warn('[Firebase] SMS send failed, falling back to WhatsApp:', err);
+        firebaseConfirmation.current = null;
+      }
+    }
+
     try {
       const body: any = { lang };
       if (method === 'phone') body.phone_number = formData.phone_number;
       else body.email = formData.email;
+      if (opts.resend) body.resend = true;
       const res = await fetch('/api/auth/send-otp', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         credentials: 'include', body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.message || (lang === 'sw' ? 'Imeshindwa kutuma nambari' : 'Failed to send code')); return false; }
+      if (data.dev_code) setDevCode(data.dev_code);
+      if (data.channel) setOtpChannel(data.channel);
+      startResendTimer(); return true;
+    } catch {
+      setError(lang === 'sw' ? 'Hitilafu ya muunganisho' : 'Connection error. Please try again.');
+      return false;
+    } finally { setSending(false); }
+  };
+
+  // Email fallback for phone signups whose WhatsApp code didn't arrive: send
+  // the code to an email address instead. The phone stays on the account
+  // unverified.
+  const sendFallbackEmailOtp = async (email: string) => {
+    setSending(true); setError('');
+    try {
+      const res = await fetch('/api/auth/send-otp', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', body: JSON.stringify({ email, lang }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.message || (lang === 'sw' ? 'Imeshindwa kutuma nambari' : 'Failed to send code')); return false; }
@@ -218,15 +276,43 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
     if (code.length < 6) { setError(lang === 'sw' ? 'Weka nambari zote 6' : 'Enter all 6 digits'); return; }
     setError(''); setLoading(true);
     try {
-      const target = method === 'phone' ? pendingUser.phone_number : pendingUser.email;
+      // Email-fallback: the code went to fallbackEmail, so verify as email and
+      // pass the phone along to be stored unverified.
+      const usingFallback = !!fallbackEmail;
+      const usingFirebase = !usingFallback && otpChannel === 'firebase' && (firebaseConfirmation.current || firebaseIdToken.current);
+
+      const body: any = {
+        password: pendingUser.password,
+        first_name: pendingUser.first_name, last_name: pendingUser.last_name || null,
+        language: lang, region: pendingUser.region || null, district: pendingUser.district || null,
+        farm_size_acres: pendingUser.farm_size_acres ? parseFloat(pendingUser.farm_size_acres) : null,
+      };
+
+      if (usingFirebase) {
+        // Confirm the code with Firebase; the ID token replaces target+code.
+        if (!firebaseIdToken.current) {
+          try {
+            firebaseIdToken.current = await confirmFirebasePhoneCode(firebaseConfirmation.current!, code);
+            firebaseConfirmation.current = null;
+          } catch (fbErr: any) {
+            const bad = fbErr?.code === 'auth/invalid-verification-code' || fbErr?.code === 'auth/code-expired';
+            setError(bad
+              ? (lang === 'sw' ? 'Nambari si sahihi' : 'Invalid or expired code')
+              : (lang === 'sw' ? 'Hitilafu ya muunganisho' : 'Connection error. Please try again.'));
+            return;
+          }
+        }
+        body.firebase_id_token = firebaseIdToken.current;
+      } else {
+        body.target = usingFallback ? fallbackEmail : (method === 'phone' ? pendingUser.phone_number : pendingUser.email);
+        body.code = code;
+        body.type = usingFallback ? 'email' : method;
+        body.phone_number = usingFallback ? pendingUser.phone_number : undefined;
+      }
+
       const res = await fetch('/api/auth/verify-otp', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({
-          target, code, type: method, password: pendingUser.password,
-          first_name: pendingUser.first_name, last_name: pendingUser.last_name || null,
-          language: lang, region: pendingUser.region || null, district: pendingUser.district || null,
-          farm_size_acres: pendingUser.farm_size_acres ? parseFloat(pendingUser.farm_size_acres) : null,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.message || (lang === 'sw' ? 'Nambari si sahihi' : 'Invalid or expired code')); return; }
@@ -319,15 +405,21 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
 
   // ── Step: verify OTP ───────────────────────────────────────────────────────
   if (step === 'verify') {
-    const target = method === 'phone' ? pendingUser?.phone_number : pendingUser?.email;
-    const masked = method === 'phone'
+    const usingFallback = !!fallbackEmail;
+    const target = usingFallback ? fallbackEmail : (method === 'phone' ? pendingUser?.phone_number : pendingUser?.email);
+    const masked = (!usingFallback && method === 'phone')
       ? target?.replace(/(\+?\d{3})\d+(\d{3})/, '$1•••••$2')
       : target?.replace(/(.{2}).+(@.+)/, '$1•••••$2');
+    const subtitle = usingFallback || method === 'email'
+      ? (lang === 'sw' ? `Nambari imetumwa kwa ${masked}` : `Code sent to ${masked}`)
+      : (otpChannel === 'sms' || otpChannel === 'firebase')
+        ? (lang === 'sw' ? `Nambari imetumwa kwa SMS kwa ${masked}` : `Code sent by SMS to ${masked}`)
+        : (lang === 'sw' ? `Nambari imetumwa kwa WhatsApp kwa ${masked}` : `Code sent via WhatsApp to ${masked}`);
     return (
       <div>
         <Header
           title={lang === 'sw' ? 'Thibitisha Akaunti' : 'Verify your account'}
-          subtitle={lang === 'sw' ? `Nambari imetumwa kwa ${masked}` : `Code sent to ${masked}`}
+          subtitle={subtitle}
         />
 
         {devCode && (
@@ -377,15 +469,80 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
                 {lang === 'sw' ? `Tuma tena baada ya ${resendTimer}s` : `Resend in ${resendTimer}s`}
               </p>
             ) : (
-              <button type="button" disabled={sending} onClick={() => sendOtp(pendingUser)}
+              <button type="button" disabled={sending}
+                onClick={() => usingFallback ? sendFallbackEmailOtp(fallbackEmail) : sendOtp(pendingUser, { resend: true })}
                 style={{ background: 'transparent', border: 0, color: '#FFCC00', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', marginTop: 4, opacity: sending ? 0.6 : 1 }}>
                 {sending ? (lang === 'sw' ? 'Inatuma...' : 'Sending...') : (lang === 'sw' ? 'Tuma tena' : 'Resend code')}
               </button>
             )}
+
+            {/* Alternate channels: Firebase SMS didn't arrive → WhatsApp; and
+                always offer the email path as the last resort. */}
+            {method === 'phone' && !usingFallback && (
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {otpChannel === 'firebase' && (
+                  <button type="button" disabled={sending}
+                    onClick={async () => {
+                      setError(''); setOtpDigits(['', '', '', '', '', '']);
+                      const ok = await sendOtp(pendingUser, { forceWhatsApp: true });
+                      if (ok) otpRefs.current[0]?.focus();
+                    }}
+                    style={{ background: 'transparent', border: 0, color: 'rgba(255,255,255,0.72)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>
+                    {lang === 'sw' ? 'Hukupokea SMS? Jaribu WhatsApp' : "Didn't get the SMS? Try WhatsApp"}
+                  </button>
+                )}
+                <button type="button" disabled={sending}
+                  onClick={() => { setError(''); setOtpDigits(['', '', '', '', '', '']); setStep('email-fallback'); }}
+                  style={{ background: 'transparent', border: 0, color: 'rgba(255,255,255,0.72)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>
+                  {otpChannel === 'firebase'
+                    ? (lang === 'sw' ? 'Thibitisha kwa barua pepe' : 'Verify with email instead')
+                    : (lang === 'sw' ? 'Huna WhatsApp? Thibitisha kwa barua pepe' : 'No WhatsApp? Verify with email instead')}
+                </button>
+              </div>
+            )}
           </div>
         </form>
 
-        <button onClick={() => { setStep('form'); setError(''); }} style={backBtn}>
+        <button onClick={() => { setStep('form'); setError(''); setFallbackEmail(''); }} style={backBtn}>
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
+          {t(lang, 'back')}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Step: email fallback (phone signup, no WhatsApp) ──────────────────────
+  if (step === 'email-fallback') {
+    const handleFallbackSubmit = async (e: React.FormEvent) => {
+      e.preventDefault(); setError('');
+      const email = fallbackEmail.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        setError(lang === 'sw' ? 'Ingiza barua pepe sahihi' : 'Enter a valid email address');
+        return;
+      }
+      const ok = await sendFallbackEmailOtp(email);
+      if (ok) { setOtpDigits(['', '', '', '', '', '']); setStep('verify'); setTimeout(() => otpRefs.current[0]?.focus(), 100); }
+    };
+    return (
+      <div>
+        <Header
+          title={lang === 'sw' ? 'Thibitisha kwa Barua Pepe' : 'Verify with email'}
+          subtitle={lang === 'sw'
+            ? 'Tutatuma nambari ya uthibitisho kwa barua pepe yako. Nambari yako ya simu itahifadhiwa kwenye akaunti.'
+            : "We'll send the code to your email instead. Your phone number stays on your account."}
+        />
+        <form onSubmit={handleFallbackSubmit}>
+          <label style={lbl}>{t(lang, 'email')} *</label>
+          <input type="email" value={fallbackEmail} onChange={e => setFallbackEmail(e.target.value)}
+            placeholder="you@example.com" style={inp} autoFocus required />
+
+          {error && <div style={errBox}>{error}</div>}
+
+          <button type="submit" disabled={sending} style={primaryBtn(sending)}>
+            {sending ? (lang === 'sw' ? 'Inatuma...' : 'Sending...') : (lang === 'sw' ? 'Tuma Nambari' : 'Send code')}
+          </button>
+        </form>
+        <button onClick={() => { setStep('form'); setError(''); setFallbackEmail(''); }} style={backBtn}>
           <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
           {t(lang, 'back')}
         </button>
@@ -496,7 +653,19 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
           </div>
         </div>
 
-        {error && <div style={errBox}>{error}</div>}
+        {error && (
+          <div style={errBox}>
+            {error}
+            {/* WhatsApp send failed outright → offer the email path right here. */}
+            {method === 'phone' && (
+              <button type="button"
+                onClick={() => { setPendingUser(form); setError(''); setStep('email-fallback'); }}
+                style={{ display: 'block', marginTop: 6, background: 'transparent', border: 0, padding: 0, color: '#FFCC00', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>
+                {lang === 'sw' ? 'Thibitisha kwa barua pepe badala yake' : 'Verify with email instead'}
+              </button>
+            )}
+          </div>
+        )}
 
         <button type="submit" disabled={loading || sending} style={primaryBtn(loading || sending)}>
           {sending
@@ -506,7 +675,9 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
 
         <p style={{ margin: '8px 0 0', fontSize: 11, textAlign: 'center', color: 'rgba(255,255,255,0.35)' }}>
           {method === 'phone'
-            ? (lang === 'sw' ? 'Utatumiwa ujumbe mfupi wa uthibitisho' : 'You will receive an SMS verification code')
+            ? (isFirebasePhoneEnabled()
+                ? (lang === 'sw' ? 'Utatumiwa nambari ya uthibitisho kwa SMS' : 'You will receive a verification code by SMS')
+                : (lang === 'sw' ? 'Utatumiwa nambari ya uthibitisho kwa WhatsApp' : 'You will receive a verification code on WhatsApp'))
             : (lang === 'sw' ? 'Utatumiwa barua pepe ya uthibitisho' : 'You will receive an email verification code')}
         </p>
       </form>

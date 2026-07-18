@@ -48,6 +48,19 @@ export async function createOtp(target: string, type: 'phone' | 'email'): Promis
   return code;
 }
 
+// Returns the active (unused, non-expired) code for a target, or null.
+// Used on resends so the code from an earlier message keeps working —
+// the user can enter whichever SMS/email arrives.
+export async function getActiveOtp(target: string, type: 'phone' | 'email'): Promise<string | null> {
+  const row = await dbGet(
+    'SELECT * FROM otp_codes WHERE target = ? AND type = ? AND used = 0',
+    target, type
+  );
+  if (!row) return null;
+  if (new Date() > new Date(row.expires_at)) return null;
+  return row.code;
+}
+
 export async function verifyOtp(target: string, code: string, type: 'phone' | 'email'): Promise<boolean> {
   const row = await dbGet(
     'SELECT * FROM otp_codes WHERE target = ? AND type = ? AND used = 0',
@@ -110,6 +123,81 @@ export async function sendSmsOtp(phoneNumber: string, code: string, lang: string
     if (status !== 'Success') {
       console.warn(`[AT SMS] Delivery status: ${status}`);
     }
+  }
+}
+
+// Send an OTP over WhatsApp via the Meta Cloud API using a pre-approved
+// authentication template. The template must exist and be approved in the
+// WhatsApp Business account (name/language configurable via env). Throws if
+// WhatsApp isn't configured or the send fails.
+export async function sendWhatsAppOtp(phoneNumber: string, code: string, lang: string): Promise<void> {
+  const phoneId = process.env.WA_PHONE_NUMBER_ID;
+  const token = process.env.WA_ACCESS_TOKEN;
+  if (!phoneId || !token) throw new Error('WhatsApp Cloud API not configured');
+
+  const templateName = process.env.WA_TEMPLATE_NAME || 'otp_verification';
+  const langCode = process.env.WA_TEMPLATE_LANG || (lang === 'sw' ? 'sw' : 'en');
+  const apiVersion = process.env.WA_API_VERSION || 'v21.0';
+
+  // Meta requires E.164 without the leading '+'.
+  const to = phoneNumber.replace(/^\+/, '');
+
+  // Standard copy-code authentication template: the same code fills the body
+  // text and the one-tap copy button (button index 0).
+  const body = {
+    messaging_product: 'whatsapp',
+    to,
+    type: 'template',
+    template: {
+      name: templateName,
+      language: { code: langCode },
+      components: [
+        { type: 'body', parameters: [{ type: 'text', text: code }] },
+        {
+          type: 'button',
+          sub_type: 'url',
+          index: '0',
+          parameters: [{ type: 'text', text: code }],
+        },
+      ],
+    },
+  };
+
+  const res = await fetch(`https://graph.facebook.com/${apiVersion}/${phoneId}/messages`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const responseText = await res.text();
+  console.log(`[WA OTP] Status: ${res.status}, Body: ${responseText.substring(0, 200)}`);
+
+  if (!res.ok) {
+    throw new Error(`WhatsApp send failed (${res.status}): ${responseText}`);
+  }
+}
+
+// Deliver a phone OTP over the server-side channels — used when client-side
+// Firebase SMS verification is unconfigured or failed (the client falls back
+// to these endpoints). WhatsApp first. SMS is a fallback only
+// while OTP_SMS_ENABLED=true — kept off until a TCRA-registered sender ID is
+// approved, since unregistered-sender SMS is silently dropped by TZ carriers.
+// If both channels are unavailable the error propagates so the client can
+// offer email verification instead.
+export async function deliverPhoneOtp(phoneNumber: string, code: string, lang: string): Promise<'whatsapp' | 'sms'> {
+  try {
+    await sendWhatsAppOtp(phoneNumber, code, lang);
+    return 'whatsapp';
+  } catch (err: any) {
+    if (process.env.OTP_SMS_ENABLED === 'true') {
+      console.warn(`[OTP] WhatsApp delivery failed, falling back to SMS: ${err.message}`);
+      await sendSmsOtp(phoneNumber, code, lang);
+      return 'sms';
+    }
+    throw err;
   }
 }
 

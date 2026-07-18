@@ -3,7 +3,8 @@ import bcrypt from 'bcryptjs';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { dbAll, dbGet, dbRun, isPostgres, getSqliteDb, getPgPool } from '../db.ts';
 import { isAuthenticated, isAdmin } from '../middleware/auth.ts';
-import { createOtp, verifyOtp, sendSmsOtp, sendEmailOtp, ensureOtpTable } from '../services/otp.ts';
+import { createOtp, getActiveOtp, verifyOtp, deliverPhoneOtp, sendEmailOtp, ensureOtpTable } from '../services/otp.ts';
+import { verifyFirebasePhoneToken } from '../services/firebasePhone.ts';
 
 const otpRateLimit = rateLimit({
   windowMs: 10 * 60 * 1000,
@@ -64,6 +65,8 @@ router.post('/login', async (req, res) => {
           region: user.region,
           district: user.district,
           farm_size_acres: farmSize,
+          email_verified: user.email_verified,
+          phone_verified: user.phone_verified,
         });
       });
     });
@@ -128,7 +131,7 @@ router.post('/register', async (req, res) => {
     }
 
     const newUser = await dbGet(
-      'SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres FROM users WHERE id = ?',
+      'SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres, email_verified, phone_verified FROM users WHERE id = ?',
       info.lastInsertRowid
     );
     if (newUser && newUser.farm_size_acres != null) newUser.farm_size_acres = parseFloat(newUser.farm_size_acres);
@@ -151,7 +154,7 @@ router.post('/register', async (req, res) => {
 // ─── POST /api/auth/send-otp ───────────────────────────────────────────────────
 router.post('/send-otp', otpRateLimit, async (req, res) => {
   try {
-    const { phone_number, email, lang } = req.body;
+    const { phone_number, email, lang, resend } = req.body;
     if (!phone_number && !email) {
       return res.status(400).json({ message: 'Phone number or email is required' });
     }
@@ -160,10 +163,14 @@ router.post('/send-otp', otpRateLimit, async (req, res) => {
       const existing = await dbGet('SELECT id FROM users WHERE phone_number = ?', phone_number);
       if (existing) return res.status(409).json({ message: 'An account with this phone number already exists' });
 
-      const code = await createOtp(phone_number, 'phone');
-      await sendSmsOtp(phone_number, code, lang || 'en');
-      console.log(`[OTP] SMS sent to ${phone_number}`);
-      return res.json({ success: true, target: phone_number, type: 'phone' });
+      // On resend reuse the active code so an earlier message still verifies;
+      // otherwise mint a fresh one.
+      const code = resend
+        ? (await getActiveOtp(phone_number, 'phone')) ?? await createOtp(phone_number, 'phone')
+        : await createOtp(phone_number, 'phone');
+      const channel = await deliverPhoneOtp(phone_number, code, lang || 'en');
+      console.log(`[OTP] ${channel} sent to ${phone_number}`);
+      return res.json({ success: true, target: phone_number, type: 'phone', channel });
     }
 
     if (email) {
@@ -183,18 +190,32 @@ router.post('/send-otp', otpRateLimit, async (req, res) => {
 // ─── POST /api/auth/verify-otp ────────────────────────────────────────────────
 router.post('/verify-otp', otpRateLimit, async (req, res) => {
   try {
-    const { target, code, type, phone_number, email, password, first_name, last_name, language, region, district, farm_size_acres } = req.body;
+    const { target, code, type, firebase_id_token, phone_number, email, password, first_name, last_name, language, region, district, farm_size_acres } = req.body;
 
-    const t = target || phone_number || email;
-    const tp = type || (phone_number ? 'phone' : 'email');
+    // Firebase-verified phone signup: the client already completed SMS
+    // verification with the Firebase SDK; Google confirms the token and tells
+    // us which phone number it proved.
+    let t: string;
+    let tp: 'phone' | 'email';
+    if (firebase_id_token) {
+      try {
+        t = await verifyFirebasePhoneToken(firebase_id_token);
+        tp = 'phone';
+      } catch (fbErr: any) {
+        return res.status(400).json({ message: fbErr.message || 'Phone verification failed. Please try again.' });
+      }
+    } else {
+      t = target || phone_number || email;
+      tp = type || (phone_number ? 'phone' : 'email');
 
-    if (!t || !code || !tp) {
-      return res.status(400).json({ message: 'Target, code, and type are required' });
-    }
+      if (!t || !code || !tp) {
+        return res.status(400).json({ message: 'Target, code, and type are required' });
+      }
 
-    const valid = await verifyOtp(t, code, tp as 'phone' | 'email');
-    if (!valid) {
-      return res.status(400).json({ message: 'Invalid or expired verification code' });
+      const valid = await verifyOtp(t, code, tp);
+      if (!valid) {
+        return res.status(400).json({ message: 'Invalid or expired verification code' });
+      }
     }
 
     // OTP verified — check for existing account before inserting
@@ -213,13 +234,26 @@ router.post('/verify-otp', otpRateLimit, async (req, res) => {
       return res.status(409).json({ message: 'An account with this ' + (tp === 'phone' ? 'phone number' : 'email') + ' already exists' });
     }
 
+    // Email-fallback registrations (phone signup whose WhatsApp code never
+    // arrived) carry the phone the user originally entered; keep it on the
+    // account unverified so it can be confirmed later. Drop it silently if
+    // another account already owns it — it proved nothing yet.
+    let extraPhone = tp === 'email' && phone_number ? phone_number : null;
+    if (extraPhone) {
+      const phoneTaken = await dbGet('SELECT id FROM users WHERE phone_number = ?', extraPhone);
+      if (phoneTaken) {
+        console.warn(`[verify-otp] Unverified phone ${extraPhone} already belongs to another account; not storing`);
+        extraPhone = null;
+      }
+    }
+
     const hash = await bcrypt.hash(pw, 10);
     let info: any;
     try {
       info = await dbRun(
         'INSERT INTO users (email, phone_number, password_hash, first_name, last_name, role, language, region, district, farm_size_acres, phone_verified, email_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         tp === 'phone' ? null : t,
-        tp === 'phone' ? t : null,
+        tp === 'phone' ? t : extraPhone,
         hash,
         first_name, last_name || null, 'user',
         language || 'en', region || null, district || null, farm_size_acres || null,
@@ -234,7 +268,7 @@ router.post('/verify-otp', otpRateLimit, async (req, res) => {
     }
 
     const newUser = await dbGet(
-      'SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres FROM users WHERE id = ?',
+      'SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres, email_verified, phone_verified FROM users WHERE id = ?',
       info.lastInsertRowid
     );
     if (newUser && newUser.farm_size_acres != null) newUser.farm_size_acres = parseFloat(newUser.farm_size_acres);
@@ -254,10 +288,108 @@ router.post('/verify-otp', otpRateLimit, async (req, res) => {
   }
 });
 
+// ─── POST /api/auth/complete/send-otp ─────────────────────────────────────────
+// Authenticated: send a code to a second identifier the logged-in user wants to
+// add to their existing account (email → phone, or phone → email).
+router.post('/complete/send-otp', isAuthenticated, otpRateLimit, async (req, res) => {
+  try {
+    const { phone_number, email, lang, resend } = req.body;
+    if (!phone_number && !email) {
+      return res.status(400).json({ message: 'Phone number or email is required' });
+    }
+
+    if (phone_number) {
+      const other = await dbGet('SELECT id FROM users WHERE phone_number = ? AND id != ?', phone_number, req.session.userId!);
+      if (other) return res.status(409).json({ message: 'This phone number is already used by another account' });
+
+      const code = resend
+        ? (await getActiveOtp(phone_number, 'phone')) ?? await createOtp(phone_number, 'phone')
+        : await createOtp(phone_number, 'phone');
+      const channel = await deliverPhoneOtp(phone_number, code, lang || 'en');
+      return res.json({ success: true, target: phone_number, type: 'phone', channel });
+    }
+
+    const other = await dbGet('SELECT id FROM users WHERE email = ? AND id != ?', email, req.session.userId!);
+    if (other) return res.status(409).json({ message: 'This email is already used by another account' });
+
+    const code = await createOtp(email, 'email');
+    await sendEmailOtp(email, code, lang || 'en');
+    return res.json({ success: true, target: email, type: 'email', dev_code: process.env.NODE_ENV !== 'production' ? code : undefined });
+  } catch (err: any) {
+    console.error('[complete/send-otp] Error:', err.message);
+    res.status(500).json({ message: err.message || 'Failed to send verification code' });
+  }
+});
+
+// ─── POST /api/auth/complete/verify-otp ───────────────────────────────────────
+// Authenticated: verify the code and bind the second identifier to the current
+// user's row (marking it verified). This is how one person gets both a verified
+// email and phone on a single account.
+router.post('/complete/verify-otp', isAuthenticated, otpRateLimit, async (req, res) => {
+  try {
+    const { target, code, type, firebase_id_token } = req.body;
+
+    // Firebase-verified phone: Google confirms the token and supplies the
+    // phone number it proved (see /verify-otp above).
+    let t: string;
+    let tp: 'phone' | 'email';
+    if (firebase_id_token) {
+      try {
+        t = await verifyFirebasePhoneToken(firebase_id_token);
+        tp = 'phone';
+      } catch (fbErr: any) {
+        return res.status(400).json({ message: fbErr.message || 'Phone verification failed. Please try again.' });
+      }
+    } else {
+      if (!target || !code || (type !== 'phone' && type !== 'email')) {
+        return res.status(400).json({ message: 'Target, code, and type are required' });
+      }
+
+      const valid = await verifyOtp(target, code, type);
+      if (!valid) {
+        return res.status(400).json({ message: 'Invalid or expired verification code' });
+      }
+      t = target;
+      tp = type;
+    }
+
+    // Re-check uniqueness against other accounts (guards against a race between
+    // send and verify).
+    const column = tp === 'phone' ? 'phone_number' : 'email';
+    const other = await dbGet(`SELECT id FROM users WHERE ${column} = ? AND id != ?`, t, req.session.userId!);
+    if (other) {
+      return res.status(409).json({ message: `This ${tp === 'phone' ? 'phone number' : 'email'} is already used by another account` });
+    }
+
+    const verifiedColumn = tp === 'phone' ? 'phone_verified' : 'email_verified';
+    try {
+      await dbRun(
+        `UPDATE users SET ${column} = ?, ${verifiedColumn} = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        t, req.session.userId!
+      );
+    } catch (updateErr: any) {
+      if (updateErr.message?.includes('UNIQUE') || updateErr.code === '23505') {
+        return res.status(409).json({ message: `This ${tp === 'phone' ? 'phone number' : 'email'} is already used by another account` });
+      }
+      throw updateErr;
+    }
+
+    const user = await dbGet(
+      'SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres, email_verified, phone_verified, created_at FROM users WHERE id = ?',
+      req.session.userId!
+    );
+    if (user && user.farm_size_acres != null) user.farm_size_acres = parseFloat(user.farm_size_acres);
+    res.json(user);
+  } catch (err: any) {
+    console.error('[complete/verify-otp] Error:', err.message);
+    res.status(500).json({ message: err.message || 'Internal server error' });
+  }
+});
+
 // ─── GET /api/auth/user ────────────────────────────────────────────────────────
 router.get('/user', isAuthenticated, async (req, res) => {
   const user = await dbGet(
-    'SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres, created_at FROM users WHERE id = ?',
+    'SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres, email_verified, phone_verified, created_at FROM users WHERE id = ?',
     req.session.userId!
   );
   if (!user) return res.status(401).json({ message: 'User not found' });
@@ -305,7 +437,7 @@ router.put('/profile', isAuthenticated, async (req, res) => {
       req.session.userId!
     );
     const user = await dbGet(
-      'SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres, created_at FROM users WHERE id = ?',
+      'SELECT id, email, phone_number, first_name, last_name, role, language, region, district, farm_size_acres, email_verified, phone_verified, created_at FROM users WHERE id = ?',
       req.session.userId!
     );
     if (user && user.farm_size_acres != null) user.farm_size_acres = parseFloat(user.farm_size_acres);
