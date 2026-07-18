@@ -45,7 +45,7 @@ steps:
       - '--add-cloudsql-instances'
       - '${_CLOUD_SQL_INSTANCE}'
       - '--set-env-vars'
-      - 'NODE_ENV=production,ADK_PORT=8001,GOOGLE_GENAI_USE_VERTEXAI=false,DB_SSL=false,GEMINI_API_KEY=${_GEMINI_API_KEY},DATABASE_URL=${_DATABASE_URL},SESSION_SECRET=${_SESSION_SECRET},ADK_INTERNAL_TOKEN=${_ADK_INTERNAL_TOKEN},FIREBASE_API_KEY=${_FIREBASE_API_KEY}'
+      - 'NODE_ENV=production,ADK_PORT=8001,GOOGLE_GENAI_USE_VERTEXAI=false,DB_SSL=false,GEMINI_API_KEY=${_GEMINI_API_KEY},DATABASE_URL=${_DATABASE_URL},SESSION_SECRET=${_SESSION_SECRET},ADK_INTERNAL_TOKEN=${_ADK_INTERNAL_TOKEN},FIREBASE_API_KEY=${_FIREBASE_API_KEY},GMAIL_USER=${_GMAIL_USER},GMAIL_APP_PASSWORD=${_GMAIL_APP_PASSWORD}'
 
 substitutions:
   _CLOUD_SQL_INSTANCE: 'bwanashamba:europe-west1:bwanashamba-db'
@@ -58,6 +58,11 @@ substitutions:
   _FIREBASE_AUTH_DOMAIN: 'bwanashamba-80509.firebaseapp.com'
   _FIREBASE_PROJECT_ID: 'bwanashamba-80509'
   _FIREBASE_APP_ID: '1:858030531593:web:aa1f8197d340eea77744d8'
+  # Email-OTP fallback credentials. Leave empty here — set the real values as
+  # substitution overrides on the Cloud Build trigger (GCP console) so the app
+  # password stays out of the repo. Empty values keep email OTP disabled.
+  _GMAIL_USER: ''
+  _GMAIL_APP_PASSWORD: ''
   _SESSION_SECRET: '43mMiALzi_BBQO-XNlxUxZMGd-Vb_TN2NQMxCt_yXdA'
   _ADK_INTERNAL_TOKEN: 'EUvfBc7SAYU56eOODdnvBis_SCgiNcvrcjDEhyrcX0o'
 
