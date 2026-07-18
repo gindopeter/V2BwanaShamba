@@ -8,11 +8,13 @@ RUN npm ci
 COPY . .
 
 # Firebase web-app config (public client identifiers) — must be present at
-# build time because Vite bakes VITE_* vars into the JS bundle.
-ARG VITE_FIREBASE_API_KEY
-ARG VITE_FIREBASE_AUTH_DOMAIN
-ARG VITE_FIREBASE_PROJECT_ID
-ARG VITE_FIREBASE_APP_ID
+# build time because Vite bakes VITE_* vars into the JS bundle. Defaults are
+# set here because the Cloud Run source-deploy trigger builds this Dockerfile
+# directly and passes no build args (cloudbuild.yaml is not used by it).
+ARG VITE_FIREBASE_API_KEY=AIzaSyCZgJlddSr3ae_VGFOGkJFK8lcEbaoRHWw
+ARG VITE_FIREBASE_AUTH_DOMAIN=bwanashamba-80509.firebaseapp.com
+ARG VITE_FIREBASE_PROJECT_ID=bwanashamba-80509
+ARG VITE_FIREBASE_APP_ID=1:858030531593:web:aa1f8197d340eea77744d8
 ENV VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY \
     VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN \
     VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID \
@@ -48,5 +50,8 @@ ENV NODE_ENV=production
 ENV PORT=8080
 ENV ADK_PORT=8001
 ENV GOOGLE_GENAI_USE_VERTEXAI=false
+# Public Firebase web API key — the server validates phone-auth ID tokens with
+# it via accounts:lookup. A FIREBASE_API_KEY service env var overrides this.
+ENV VITE_FIREBASE_API_KEY=AIzaSyCZgJlddSr3ae_VGFOGkJFK8lcEbaoRHWw
 
 CMD ["./docker-start.sh"]
