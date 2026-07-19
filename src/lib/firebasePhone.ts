@@ -55,6 +55,10 @@ function getRecaptchaVerifier(a: Auth): RecaptchaVerifier {
 function resetRecaptcha() {
   try { verifier?.clear(); } catch { /* already cleared */ }
   verifier = null;
+  // Remove the container too: grecaptcha marks the element as used even after
+  // clear(), and re-rendering into it throws "reCAPTCHA has already been
+  // rendered in this element". A fresh div is created on the next attempt.
+  document.getElementById('firebase-recaptcha')?.remove();
 }
 
 // Sends the SMS. Each call issues a fresh code/ConfirmationResult, so resends
