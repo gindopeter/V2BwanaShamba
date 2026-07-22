@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { type Language, t, TANZANIA_REGIONS, TANZANIA_DISTRICTS } from '../lib/i18n';
 import {
-  isFirebasePhoneEnabled, startFirebasePhoneVerification, confirmFirebasePhoneCode,
+  isFirebasePhoneEnabled, startFirebasePhoneVerification, confirmFirebasePhoneCode, firebasePhoneFailure,
   type ConfirmationResult,
 } from '../lib/firebasePhone';
 
@@ -195,6 +195,7 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
     setSending(true); setError('');
     firebaseConfirmation.current = null;
     firebaseIdToken.current = null;
+    let googleSmsFailure = '';
 
     // Firebase first for phone numbers: Google delivers the SMS itself. On any
     // failure (unconfigured, quota, region policy, reCAPTCHA) fall through to
@@ -208,6 +209,7 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
         return true;
       } catch (err) {
         console.warn('[Firebase] SMS send failed, falling back to WhatsApp:', err);
+        googleSmsFailure = firebasePhoneFailure(err, lang).message;
         firebaseConfirmation.current = null;
       }
     }
@@ -222,9 +224,18 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
         credentials: 'include', body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.message || (lang === 'sw' ? 'Imeshindwa kutuma nambari' : 'Failed to send code')); return false; }
+      if (!res.ok) {
+        setError(googleSmsFailure || data.message || (lang === 'sw' ? 'Imeshindwa kutuma nambari' : 'Failed to send code'));
+        return false;
+      }
       if (data.dev_code) setDevCode(data.dev_code);
       if (data.channel) setOtpChannel(data.channel);
+      if (googleSmsFailure) {
+        const fallbackChannel = data.channel === 'sms' ? 'SMS' : 'WhatsApp';
+        setError(lang === 'sw'
+          ? `${googleSmsFailure} Nambari imetumwa kwa ${fallbackChannel} badala yake.`
+          : `${googleSmsFailure} A code was sent through ${fallbackChannel} instead.`);
+      }
       startResendTimer(); return true;
     } catch {
       setError(lang === 'sw' ? 'Hitilafu ya muunganisho' : 'Connection error. Please try again.');
@@ -258,7 +269,7 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
     if (method === 'email' && !form.email.trim()) { setError(lang === 'sw' ? 'Barua pepe inahitajika' : 'Email is required'); return; }
     if (method === 'phone') {
       const digits = form.phone_number.replace(/^\+255/, '').trim();
-      if (!digits || !/^\d{9}$/.test(digits)) {
+      if (!digits || !/^[67]\d{8}$/.test(digits)) {
         setError(lang === 'sw' ? 'Ingiza nambari sahihi ya simu (mfano: +255 712 345 678)' : 'Enter a valid phone number (e.g. +255 712 345 678)');
         return;
       }
@@ -588,7 +599,12 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
               <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.45)', fontSize: 14, fontWeight: 600, pointerEvents: 'none' }}>+255</span>
               <input type="tel"
                 value={form.phone_number.startsWith('+255') ? form.phone_number.slice(4) : form.phone_number}
-                onChange={e => { const raw = e.target.value.replace(/\D/g, ''); handleChange('phone_number', '+255' + raw); }}
+                onChange={e => {
+                  // Accept the common local form 0712 345 678 as well as
+                  // the international form shown beside the field.
+                  const raw = e.target.value.replace(/\D/g, '').replace(/^0/, '');
+                  handleChange('phone_number', '+255' + raw);
+                }}
                 placeholder="7XX XXX XXX" maxLength={9}
                 style={{ ...inp, paddingLeft: 54 }} required />
             </div>

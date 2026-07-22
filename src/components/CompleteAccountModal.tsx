@@ -3,7 +3,7 @@ import { X, Mail, Phone, ShieldCheck } from 'lucide-react';
 import type { AuthUser } from '../App';
 import { type Language } from '../lib/i18n';
 import {
-  isFirebasePhoneEnabled, startFirebasePhoneVerification, confirmFirebasePhoneCode,
+  isFirebasePhoneEnabled, startFirebasePhoneVerification, confirmFirebasePhoneCode, firebasePhoneFailure,
   type ConfirmationResult,
 } from '../lib/firebasePhone';
 
@@ -65,7 +65,7 @@ export default function CompleteAccountModal({ user, lang, onClose, onComplete }
 
   const sendOtp = async (opts: { resend?: boolean; forceWhatsApp?: boolean } = {}) => {
     setError('');
-    if (type === 'phone' && !/^\d{9}$/.test(phone)) {
+    if (type === 'phone' && !/^[67]\d{8}$/.test(phone)) {
       setError(sw ? 'Ingiza nambari sahihi ya simu (mfano: +255 712 345 678)' : 'Enter a valid phone number (e.g. +255 712 345 678)');
       return false;
     }
@@ -79,6 +79,7 @@ export default function CompleteAccountModal({ user, lang, onClose, onComplete }
 
     // Firebase first for phone numbers (Google-delivered SMS); fall through to
     // the server's WhatsApp chain on any failure.
+    let googleSmsFailure = '';
     if (type === 'phone' && !opts.forceWhatsApp && isFirebasePhoneEnabled()) {
       try {
         firebaseConfirmation.current = await startFirebasePhoneVerification(target, lang);
@@ -87,6 +88,7 @@ export default function CompleteAccountModal({ user, lang, onClose, onComplete }
         return true;
       } catch (err) {
         console.warn('[Firebase] SMS send failed, falling back to WhatsApp:', err);
+        googleSmsFailure = firebasePhoneFailure(err, lang).message;
         firebaseConfirmation.current = null;
       }
     }
@@ -101,9 +103,15 @@ export default function CompleteAccountModal({ user, lang, onClose, onComplete }
         credentials: 'include', body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.message || (sw ? 'Imeshindwa kutuma nambari' : 'Failed to send code')); return false; }
+      if (!res.ok) { setError(googleSmsFailure || data.message || (sw ? 'Imeshindwa kutuma nambari' : 'Failed to send code')); return false; }
       if (data.dev_code) setDevCode(data.dev_code);
       if (data.channel) setOtpChannel(data.channel);
+      if (googleSmsFailure) {
+        const fallbackChannel = data.channel === 'sms' ? 'SMS' : 'WhatsApp';
+        setError(sw
+          ? `${googleSmsFailure} Nambari imetumwa kwa ${fallbackChannel} badala yake.`
+          : `${googleSmsFailure} A code was sent through ${fallbackChannel} instead.`);
+      }
       return true;
     } catch {
       setError(sw ? 'Hitilafu ya muunganisho' : 'Connection error. Please try again.');
@@ -190,7 +198,7 @@ export default function CompleteAccountModal({ user, lang, onClose, onComplete }
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#5d6c7b] font-medium pointer-events-none">+255</span>
                   <input
                     type="tel" value={phone}
-                    onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 9))}
+                    onChange={e => setPhone(e.target.value.replace(/\D/g, '').replace(/^0/, '').slice(0, 9))}
                     placeholder="7XX XXX XXX" maxLength={9}
                     className={inputClass} style={{ paddingLeft: 58 }} autoFocus
                   />
