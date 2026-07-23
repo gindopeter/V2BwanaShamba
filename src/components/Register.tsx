@@ -127,7 +127,9 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
   const [method, setMethod] = useState<Method>('email');
   const [form, setForm] = useState({
     first_name: '', last_name: '',
-    email: '', phone_number: '',
+    // Prefill Tanzania's country code (the primary audience) so most users just
+    // append their number; users abroad can clear it and enter their own code.
+    email: '', phone_number: '+255',
     password: '', region: '', district: '', farm_size_acres: '',
   });
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
@@ -268,9 +270,9 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
     if (!form.first_name.trim()) { setError(lang === 'sw' ? 'Jina la kwanza linahitajika' : 'First name is required'); return; }
     if (method === 'email' && !form.email.trim()) { setError(lang === 'sw' ? 'Barua pepe inahitajika' : 'Email is required'); return; }
     if (method === 'phone') {
-      const digits = form.phone_number.replace(/^\+255/, '').trim();
-      if (!digits || !/^[67]\d{8}$/.test(digits)) {
-        setError(lang === 'sw' ? 'Ingiza nambari sahihi ya simu (mfano: +255 712 345 678)' : 'Enter a valid phone number (e.g. +255 712 345 678)');
+      // Country-agnostic E.164: a leading + then 8–15 digits (country code first).
+      if (!/^\+[1-9]\d{7,14}$/.test(form.phone_number.trim())) {
+        setError(lang === 'sw' ? 'Ingiza nambari sahihi ukijumuisha msimbo wa nchi (mf. +255 712 345 678)' : 'Enter a valid phone number with country code (e.g. +255 712 345 678)');
         return;
       }
     }
@@ -595,21 +597,19 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
         ) : (
           <div>
             <label style={lbl}>{t(lang, 'phoneNumber')} *</label>
-            <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.45)', fontSize: 14, fontWeight: 600, pointerEvents: 'none' }}>+255</span>
-              <input type="tel"
-                value={form.phone_number.startsWith('+255') ? form.phone_number.slice(4) : form.phone_number}
-                onChange={e => {
-                  // Accept the common local form 0712 345 678 as well as
-                  // the international form shown beside the field.
-                  const raw = e.target.value.replace(/\D/g, '').replace(/^0/, '');
-                  handleChange('phone_number', '+255' + raw);
-                }}
-                placeholder="7XX XXX XXX" maxLength={9}
-                style={{ ...inp, paddingLeft: 54 }} required />
-            </div>
+            <input type="tel"
+              value={form.phone_number}
+              onChange={e => {
+                // Full international entry: keep digits only and force a single
+                // leading '+'. Users must include their own country code
+                // (e.g. +255, +254, +1), so numbers from any country work.
+                const digits = e.target.value.replace(/\D/g, '');
+                handleChange('phone_number', digits ? '+' + digits : '');
+              }}
+              placeholder="+255 712 345 678" maxLength={16}
+              style={inp} required />
             <p style={{ margin: '4px 0 0', fontSize: 11, color: 'rgba(255,255,255,0.38)' }}>
-              {lang === 'sw' ? 'Mfano: +255 712 345 678' : 'e.g. +255 712 345 678'}
+              {lang === 'sw' ? 'Anza na msimbo wa nchi, mf. +255 712 345 678' : 'Start with your country code, e.g. +255 712 345 678'}
             </p>
           </div>
         )}
