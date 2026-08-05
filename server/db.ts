@@ -39,7 +39,7 @@ async function initPostgres() {
 
   const client = await pgPool.connect();
   try {
-    console.log('[DB] Connected to PostgreSQL (Cloud SQL)');
+    console.log('[DB] Connected to PostgreSQL');
   } finally {
     client.release();
   }

@@ -42,13 +42,10 @@ steps:
       - '3'
       - '--timeout'
       - '300'
-      - '--add-cloudsql-instances'
-      - '${_CLOUD_SQL_INSTANCE}'
       - '--set-env-vars'
-      - 'NODE_ENV=production,ADK_PORT=8001,GOOGLE_GENAI_USE_VERTEXAI=false,DB_SSL=false,GEMINI_API_KEY=${_GEMINI_API_KEY},DATABASE_URL=${_DATABASE_URL},SESSION_SECRET=${_SESSION_SECRET},ADK_INTERNAL_TOKEN=${_ADK_INTERNAL_TOKEN},FIREBASE_API_KEY=${_FIREBASE_API_KEY},GMAIL_USER=${_GMAIL_USER},GMAIL_APP_PASSWORD=${_GMAIL_APP_PASSWORD}'
+      - 'NODE_ENV=production,ADK_PORT=8001,GOOGLE_GENAI_USE_VERTEXAI=false,DB_SSL=true,GEMINI_API_KEY=${_GEMINI_API_KEY},DATABASE_URL=${_DATABASE_URL},SESSION_SECRET=${_SESSION_SECRET},ADK_INTERNAL_TOKEN=${_ADK_INTERNAL_TOKEN},FIREBASE_API_KEY=${_FIREBASE_API_KEY},GMAIL_USER=${_GMAIL_USER},GMAIL_APP_PASSWORD=${_GMAIL_APP_PASSWORD}'
 
 substitutions:
-  _CLOUD_SQL_INSTANCE: 'bwanashamba:europe-west1:bwanashamba-db'
   _GEMINI_API_KEY: ''
   _DATABASE_URL: ''
   # Firebase web-app config — public client identifiers (not secrets); baked
