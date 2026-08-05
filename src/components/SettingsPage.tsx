@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Lock, User, Shield, Trash2, Plus, Check, AlertCircle, Eye, EyeOff, UserPlus, Edit2, X, UserX, UserCheck, Globe, Brain } from 'lucide-react';
 import type { AuthUser } from '../App';
-import { type Language, t, TANZANIA_REGIONS } from '../lib/i18n';
+import { type Language, t, TANZANIA_REGIONS, getRegionName } from '../lib/i18n';
 import { fetchMemories, deleteMemory, type Memory } from '../lib/api';
 
 interface SettingsPageProps {
@@ -185,7 +185,7 @@ function ProfileSection({ user, onUserUpdate, lang = 'en' }: { user: AuthUser; o
               >
                 <option value="">{t(lang, 'selectRegion')}</option>
                 {TANZANIA_REGIONS.map(r => (
-                  <option key={r} value={r}>{r}</option>
+                  <option key={r} value={r}>{getRegionName(r, lang)}</option>
                 ))}
               </select>
             </div>

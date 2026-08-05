@@ -269,6 +269,30 @@ export const TANZANIA_DISTRICTS: Record<string, string[]> = {
   'Zanzibar West': ['Mjini', 'Magharibi A', 'Magharibi B'],
 };
 
+// Region and district names are proper nouns; only the English qualifiers
+// ("City", "Urban", "Rural", compass directions) need translating.
+const REGION_NAMES_SW: Record<string, string> = {
+  'Zanzibar North': 'Zanzibar Kaskazini',
+  'Zanzibar South': 'Zanzibar Kusini',
+  'Zanzibar West': 'Zanzibar Magharibi',
+};
+
+export function getRegionName(region: string, lang: Language): string {
+  if (lang !== 'sw' || !region) return region;
+  return REGION_NAMES_SW[region] || region;
+}
+
+export function getDistrictName(district: string, lang: Language): string {
+  if (lang !== 'sw' || !district) return district;
+  const city = district.match(/^(.*) City$/);
+  if (city) return `Jiji la ${city[1]}`;
+  const urban = district.match(/^(.*) Urban$/);
+  if (urban) return `${urban[1]} Mjini`;
+  const rural = district.match(/^(.*) Rural$/);
+  if (rural) return `${rural[1]} Vijijini`;
+  return district;
+}
+
 export const CROP_NAMES_SW: Record<string, string> = {
   // Cereals
   'Maize': 'Mahindi',
