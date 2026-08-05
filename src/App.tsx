@@ -52,6 +52,11 @@ const LAST_VIEW_KEY = 'bwanashamba:lastView';
 const COMPLETE_DISMISS_KEY = 'bwanashamba:completeDismissedAt';
 const COMPLETE_SNOOZE_MS = 24 * 60 * 60 * 1000;
 
+// Asking a user with a verified email to also add a mobile number is switched
+// off for now — only a missing/unverified email raises the reminder. Set this
+// to true to bring the phone ask back; the banner and modal still handle it.
+const PHONE_NUDGE_ENABLED = false;
+
 function readCompletionDismissedAt(): number | null {
   try {
     const v = sessionStorage.getItem(COMPLETE_DISMISS_KEY);
@@ -294,9 +299,11 @@ export default function App() {
   // The completion snooze is time-based, but a live tab won't re-render when the
   // 24h elapses. Schedule a wake-up to lift the snooze so the banner returns.
   useEffect(() => {
+    // Mirrors missingIdentifier below (which can't be referenced here — it is
+    // computed after the null-user guard, past this effect's dependency array).
     const incomplete = !!user && (
-      !user.phone_number || user.phone_verified === 0 ||
-      !user.email || user.email_verified === 0
+      !user.email || user.email_verified === 0 ||
+      (PHONE_NUDGE_ENABLED && (!user.phone_number || user.phone_verified === 0))
     );
     if (!incomplete || completionDismissedAt === null) return;
     const clearSnooze = () => {
@@ -308,6 +315,18 @@ export default function App() {
     const timer = setTimeout(clearSnooze, remaining);
     return () => clearTimeout(timer);
   }, [user, completionDismissedAt]);
+
+  // A user with no verified email meets the "add email" screen when they sign in
+  // — that address is their sole route back into the account. Deliberately tied
+  // to the sign-in action rather than to `user` becoming set, so restoring a
+  // session on page load or refresh doesn't reopen it; the banner covers those.
+  // Closing it leaves the banner up, and "Later" there snoozes both.
+  const promptForEmailOnSignIn = (u: AuthUser) => {
+    const needsEmail = !u.email || u.email_verified === 0;
+    const snoozed = completionDismissedAt !== null
+      && (Date.now() - completionDismissedAt) < COMPLETE_SNOOZE_MS;
+    if (needsEmail && !snoozed) setShowComplete(true);
+  };
 
   const handleTaskAction = async (id: number, action: string) => {
     const previous = tasks;
@@ -382,9 +401,12 @@ export default function App() {
         initialPanel={authTarget}
         // "Back" from the auth screen returns to the marketing landing.
         onExit={() => { window.location.href = '/'; }}
-        onLogin={(u) => {
+        onLogin={(u, via) => {
           setLoggedOutNotice(null);
           setUser(u);
+          // Not on 'signup': a phone signup has only just finished a form, and
+          // the banner is already there to prompt them.
+          if (via === 'signin') promptForEmailOnSignIn(u);
         }}
       />
     );
@@ -392,11 +414,14 @@ export default function App() {
 
   const handleLogout = () => logout({ reset: true });
 
-  // Nudge users whose account is missing an identifier, or holding one that
-  // was never OTP-confirmed (e.g. the phone from an email-fallback signup).
+  // Nudge users who have no verified email — that address is what backs account
+  // recovery and password reset, and phone signups now arrive without one since
+  // their number goes unverified (see Register.tsx). A verified email is treated
+  // as a complete account: we deliberately don't ask those users for a phone
+  // number for now, so flip PHONE_NUDGE_ENABLED to restore that ask.
   const missingIdentifier: 'phone' | 'email' | null =
-    (!user.phone_number || user.phone_verified === 0) ? 'phone'
-    : (!user.email || user.email_verified === 0) ? 'email'
+    (!user.email || user.email_verified === 0) ? 'email'
+    : (PHONE_NUDGE_ENABLED && (!user.phone_number || user.phone_verified === 0)) ? 'phone'
     : null;
   const snoozeActive = completionDismissedAt !== null && (Date.now() - completionDismissedAt) < COMPLETE_SNOOZE_MS;
   const showCompletionBanner = missingIdentifier !== null && !snoozeActive;
@@ -446,7 +471,7 @@ export default function App() {
               ? (user.phone_number
                   ? (lang === 'sw' ? 'Kamilisha akaunti yako — thibitisha nambari yako ya simu.' : 'Complete your account — verify your mobile number.')
                   : (lang === 'sw' ? 'Kamilisha akaunti yako — ongeza nambari ya simu ili kuilinda.' : 'Complete your account — add a mobile number to secure it.'))
-              : (lang === 'sw' ? 'Kamilisha akaunti yako — ongeza barua pepe kwa ajili ya kurejesha akaunti.' : 'Complete your account — add an email for account recovery.')}
+              : (lang === 'sw' ? 'Kamilisha akaunti yako — ongeza barua pepe kwa ajili ya kurejesha akaunti na nywila.' : 'Complete your account — add an email for account recovery and password reset.')}
           </p>
           <button
             onClick={() => setShowComplete(true)}
@@ -580,7 +605,6 @@ export default function App() {
                 boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
               }}
             >
-              <span className="text-2xl flex-shrink-0">⚡</span>
               <p
                 className="font-black text-[#002c11] flex-shrink-0"
                 style={{ fontFamily: "'Instrument Sans', sans-serif", fontSize: 28, letterSpacing: '-0.04em', lineHeight: 1 }}

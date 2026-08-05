@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { type Language, t, TANZANIA_REGIONS, TANZANIA_DISTRICTS } from '../lib/i18n';
+import { type Language, t, TANZANIA_REGIONS, TANZANIA_DISTRICTS, getRegionName, getDistrictName } from '../lib/i18n';
 import {
   isFirebasePhoneEnabled, startFirebasePhoneVerification, confirmFirebasePhoneCode, firebasePhoneFailure,
   type ConfirmationResult,
@@ -14,6 +14,14 @@ interface RegisterProps {
 
 type Step = 'language' | 'method' | 'form' | 'verify' | 'email-fallback';
 type Method = 'email' | 'phone';
+
+// Phone-number signups are currently created without an SMS/WhatsApp code: the
+// number is stored unverified and the account is opened straight away. Those
+// users are nudged to add a verified email after login (see App.tsx), which is
+// what backs account recovery and password reset for them. Flip this back to
+// true to restore the Firebase SMS → WhatsApp → email chain, which is all still
+// wired up below. Email signups are unaffected — they always verify by OTP.
+const PHONE_VERIFICATION_ENABLED = false;
 
 // ─── shared dark-glass styles (matches sign-in sheet) ─────────────────────────
 
@@ -265,6 +273,34 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
     } finally { setSending(false); }
   };
 
+  // Unverified signup (phone method while PHONE_VERIFICATION_ENABLED is off):
+  // create the account directly, no code round-trip. Only the contact detail the
+  // user actually filled in is sent, so the other column stays null.
+  const registerDirect = async (formData: typeof form) => {
+    setLoading(true); setError('');
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({
+          phone_number: method === 'phone' ? formData.phone_number : null,
+          email: method === 'email' ? formData.email.trim() : null,
+          password: formData.password,
+          first_name: formData.first_name, last_name: formData.last_name || null,
+          language: lang, region: formData.region || null, district: formData.district || null,
+          farm_size_acres: formData.farm_size_acres ? parseFloat(formData.farm_size_acres) : null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message || (lang === 'sw' ? 'Imeshindwa kufungua akaunti' : 'Could not create your account'));
+        return;
+      }
+      onRegister(data);
+    } catch {
+      setError(lang === 'sw' ? 'Hitilafu ya muunganisho' : 'Connection error. Please try again.');
+    } finally { setLoading(false); }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setError('');
     if (!form.first_name.trim()) { setError(lang === 'sw' ? 'Jina la kwanza linahitajika' : 'First name is required'); return; }
@@ -279,6 +315,7 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
     if (!form.farm_size_acres || parseFloat(form.farm_size_acres) <= 0) { setError(lang === 'sw' ? 'Ukubwa wa shamba unahitajika' : 'Farm size is required'); return; }
     if (form.password.length < 6) { setError(lang === 'sw' ? 'Nywila lazima iwe na herufi 6 au zaidi' : 'Password must be at least 6 characters'); return; }
     setPendingUser(form);
+    if (method === 'phone' && !PHONE_VERIFICATION_ENABLED) { await registerDirect(form); return; }
     const ok = await sendOtp(form);
     if (ok) { setOtpDigits(['', '', '', '', '', '']); setStep('verify'); setTimeout(() => otpRefs.current[0]?.focus(), 100); }
   };
@@ -640,7 +677,7 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
             <select value={form.region} onChange={e => handleChange('region', e.target.value)}
               style={{ ...inp, appearance: 'none', WebkitAppearance: 'none', cursor: 'pointer', paddingRight: 32 }}>
               <option value="" style={{ background: '#0c1e12' }}>{t(lang, 'selectRegion')}</option>
-              {TANZANIA_REGIONS.map(r => <option key={r} value={r} style={{ background: '#0c1e12' }}>{r}</option>)}
+              {TANZANIA_REGIONS.map(r => <option key={r} value={r} style={{ background: '#0c1e12' }}>{getRegionName(r, lang)}</option>)}
             </select>
           </SelectWrap>
         </div>
@@ -654,7 +691,7 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
                 <select value={form.district} onChange={e => handleChange('district', e.target.value)}
                   style={{ ...inp, appearance: 'none', WebkitAppearance: 'none', cursor: 'pointer', paddingRight: 32 }}>
                   <option value="" style={{ background: '#0c1e12' }}>{t(lang, 'selectDistrict')}</option>
-                  {availableDistricts.map(d => <option key={d} value={d} style={{ background: '#0c1e12' }}>{d}</option>)}
+                  {availableDistricts.map(d => <option key={d} value={d} style={{ background: '#0c1e12' }}>{getDistrictName(d, lang)}</option>)}
                 </select>
               </SelectWrap>
             ) : (
@@ -673,7 +710,7 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
           <div style={errBox}>
             {error}
             {/* WhatsApp send failed outright → offer the email path right here. */}
-            {method === 'phone' && (
+            {method === 'phone' && PHONE_VERIFICATION_ENABLED && (
               <button type="button"
                 onClick={() => { setPendingUser(form); setError(''); setStep('email-fallback'); }}
                 style={{ display: 'block', marginTop: 6, background: 'transparent', border: 0, padding: 0, color: '#FFCC00', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>
@@ -684,13 +721,19 @@ export default function Register({ onRegister, onBack, onClose, initialLanguage 
         )}
 
         <button type="submit" disabled={loading || sending} style={primaryBtn(loading || sending)}>
-          {sending
-            ? (lang === 'sw' ? 'Inatuma nambari...' : 'Sending code...')
-            : (lang === 'sw' ? 'Endelea na Uthibitisho' : 'Continue & Verify')}
+          {method === 'phone' && !PHONE_VERIFICATION_ENABLED
+            ? (loading
+                ? (lang === 'sw' ? 'Inafungua akaunti...' : 'Creating account...')
+                : (lang === 'sw' ? 'Fungua Akaunti' : 'Create Account'))
+            : sending
+              ? (lang === 'sw' ? 'Inatuma nambari...' : 'Sending code...')
+              : (lang === 'sw' ? 'Endelea na Uthibitisho' : 'Continue & Verify')}
         </button>
 
         <p style={{ margin: '8px 0 0', fontSize: 11, textAlign: 'center', color: 'rgba(255,255,255,0.35)' }}>
-          {method === 'phone'
+          {method === 'phone' && !PHONE_VERIFICATION_ENABLED
+            ? (lang === 'sw' ? 'Akaunti yako itafunguliwa mara moja' : 'Your account will be created right away')
+            : method === 'phone'
             ? (isFirebasePhoneEnabled()
                 ? (lang === 'sw' ? 'Utatumiwa nambari ya uthibitisho kwa SMS' : 'You will receive a verification code by SMS')
                 : (lang === 'sw' ? 'Utatumiwa nambari ya uthibitisho kwa WhatsApp' : 'You will receive a verification code on WhatsApp'))

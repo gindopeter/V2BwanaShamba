@@ -6,7 +6,9 @@ import { type Language, t } from '../lib/i18n';
 type Panel = 'signin' | 'register' | 'chat';
 
 interface LoginProps {
-  onLogin: (user: any) => void;
+  /** `via` tells the caller whether this was a credential sign-in or a fresh
+   *  signup — App.tsx only raises the add-email prompt on a real sign-in. */
+  onLogin: (user: any, via: 'signin' | 'signup') => void;
   notice?: string | null;
   /** Which panel to open on mount (e.g. when arriving from the marketing landing). */
   initialPanel?: Panel;
@@ -182,7 +184,7 @@ export default function Login({ onLogin, notice, initialPanel, onExit }: LoginPr
         setError(data.message || (lang === 'sw' ? 'Imeshindwa kuingia' : 'Login failed'));
         return;
       }
-      onLogin(data);
+      onLogin(data, 'signin');
     } catch {
       setError(lang === 'sw' ? 'Hitilafu ya muunganisho' : 'Connection error. Please try again.');
     } finally {
@@ -494,7 +496,7 @@ export default function Login({ onLogin, notice, initialPanel, onExit }: LoginPr
               }}
             >
               <Register
-                onRegister={onLogin}
+                onRegister={(u) => onLogin(u, 'signup')}
                 onBack={onExit ?? (() => setPanel('signin'))}
                 onClose={onExit ?? (() => setPanel('signin'))}
                 initialLanguage={lang}

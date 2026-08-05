@@ -21,9 +21,11 @@ interface CompleteAccountModalProps {
 // via Firebase SMS first, falling back to WhatsApp (then Africa's Talking SMS
 // once OTP_SMS_ENABLED); email codes by Gmail.
 export default function CompleteAccountModal({ user, lang, onClose, onComplete }: CompleteAccountModalProps) {
-  // Ask for whichever identifier is missing or still unverified.
+  // Ask for whichever identifier is missing or still unverified, email first —
+  // this must stay in step with missingIdentifier in App.tsx, which raises the
+  // banner that opens this modal.
   const type: 'phone' | 'email' =
-    (!user.phone_number || user.phone_verified === 0) ? 'phone' : 'email';
+    (!user.email || user.email_verified === 0) ? 'email' : 'phone';
 
   const [step, setStep] = useState<'input' | 'verify'>('input');
   // Prefill identifiers stored unverified (e.g. from an email-fallback signup).
@@ -184,7 +186,7 @@ export default function CompleteAccountModal({ user, lang, onClose, onComplete }
             <p className="text-xs text-[#5d6c7b]">
               {type === 'phone'
                 ? (sw ? 'Linda akaunti yako na uingie kwa njia yoyote' : 'Secure your account and log in either way')
-                : (sw ? 'Kwa ajili ya kurejesha akaunti na kuingia' : 'For account recovery and signing in')}
+                : (sw ? 'Kwa ajili ya kurejesha akaunti na nywila' : 'For account recovery and password reset')}
             </p>
           </div>
         </div>
