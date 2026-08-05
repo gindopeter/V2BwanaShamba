@@ -12,7 +12,8 @@
     "build": "vite build && cp landing/index.html dist/public/index.html && cp landing/landing.css dist/public/landing.css",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "check:crops": "node scripts/check-crop-sync.mjs",
+    "lint": "node scripts/check-crop-sync.mjs && tsc --noEmit"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
