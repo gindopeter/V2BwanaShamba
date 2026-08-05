@@ -1,46 +1,7 @@
 import { Zone } from '../lib/api';
 import { Pencil } from 'lucide-react';
 import { type Language, getCropName } from '../lib/i18n';
-
-const CROP_CONFIG: Record<string, { emoji: string; totalDays: number }> = {
-  'Tomato':     { emoji: '🍅', totalDays: 120 },
-  'Onion':      { emoji: '🧅', totalDays: 150 },
-  'Pepper':     { emoji: '🌶️', totalDays: 130 },
-  'Cabbage':    { emoji: '🥬', totalDays: 100 },
-  'Spinach':    { emoji: '🥬', totalDays: 50  },
-  'Cucumber':   { emoji: '🥒', totalDays: 70  },
-  'Watermelon': { emoji: '🍉', totalDays: 90  },
-  'Eggplant':   { emoji: '🍆', totalDays: 130 },
-  'Carrot':     { emoji: '🥕', totalDays: 90  },
-  'Lettuce':    { emoji: '🥗', totalDays: 65  },
-  'Okra':       { emoji: '🌿', totalDays: 60  },
-  'Green Bean': { emoji: '🫘', totalDays: 60  },
-  'Maize':      { emoji: '🌽', totalDays: 120 },
-};
-
-const CROP_COLORS: Record<string, { bg: string; bar: string; dot: string }> = {
-  'Tomato':     { bg: '#fee2e2', bar: '#dc2626', dot: '#ef4444' },
-  'Onion':      { bg: '#ede9fe', bar: '#7c3aed', dot: '#8b5cf6' },
-  'Pepper':     { bg: '#fef9c3', bar: '#ca8a04', dot: '#eab308' },
-  'Cabbage':    { bg: '#dcfce7', bar: '#15803d', dot: '#22c55e' },
-  'Spinach':    { bg: '#dcfce7', bar: '#166534', dot: '#22c55e' },
-  'Cucumber':   { bg: '#ccfbf1', bar: '#0f766e', dot: '#14b8a6' },
-  'Watermelon': { bg: '#fce7f3', bar: '#db2777', dot: '#ec4899' },
-  'Eggplant':   { bg: '#f3e8ff', bar: '#6d28d9', dot: '#8b5cf6' },
-  'Carrot':     { bg: '#ffedd5', bar: '#ea580c', dot: '#f97316' },
-  'Lettuce':    { bg: '#ecfccb', bar: '#4d7c0f', dot: '#84cc16' },
-  'Okra':       { bg: '#d1fae5', bar: '#059669', dot: '#10b981' },
-  'Green Bean': { bg: '#dcfce7', bar: '#16a34a', dot: '#22c55e' },
-  'Maize':      { bg: '#fef3c7', bar: '#d97706', dot: '#f59e0b' },
-};
-
-function getCropConfig(cropType: string) {
-  return CROP_CONFIG[cropType] || { emoji: '🌱', totalDays: 120 };
-}
-
-function getCropColors(cropType: string) {
-  return CROP_COLORS[cropType] || { bg: '#f0fdf4', bar: '#035925', dot: '#22c55e' };
-}
+import { getCropColors, getCropEmoji, getTotalGrowthDays } from '../lib/crops';
 
 export default function ZoneCard({
   zone,
@@ -53,7 +14,8 @@ export default function ZoneCard({
   onEdit?: (zone: Zone) => void;
   lang?: Language;
 }) {
-  const { emoji, totalDays } = getCropConfig(zone.crop_type);
+  const emoji = getCropEmoji(zone.crop_type);
+  const totalDays = getTotalGrowthDays(zone);
   const { bg: cropBg, bar: cropBar } = getCropColors(zone.crop_type);
   const progress = Math.min((zone.current_growth_day / totalDays) * 100, 100);
   const displayCropName = getCropName(zone.crop_type, lang);
@@ -138,5 +100,3 @@ export default function ZoneCard({
     </div>
   );
 }
-
-export { CROP_CONFIG, getCropConfig, CROP_COLORS, getCropColors };

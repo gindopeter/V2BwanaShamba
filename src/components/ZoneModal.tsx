@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { X, Trash2, Loader2, ChevronDown, Search } from 'lucide-react';
 import { Zone } from '../lib/api';
 import { type Language, t, getCropName } from '../lib/i18n';
+import { CROP_LIST, CROP_EMOJI, GROUP_ORDER } from '../lib/crops';
 
 interface ZoneModalProps {
   zone?: Zone | null;
@@ -12,84 +13,6 @@ interface ZoneModalProps {
   maxAreaSize?: number;
   usedAcres?: number;
 }
-
-const CROP_LIST: { value: string; group: string }[] = [
-  // Cereals
-  { value: 'Maize',          group: 'cereal' },
-  { value: 'Rice',           group: 'cereal' },
-  { value: 'Sorghum',        group: 'cereal' },
-  { value: 'Millet',         group: 'cereal' },
-  { value: 'Wheat',          group: 'cereal' },
-  { value: 'Barley',         group: 'cereal' },
-  // Vegetables
-  { value: 'Tomato',         group: 'vegetables' },
-  { value: 'Kale',           group: 'vegetables' },
-  { value: 'Onion',          group: 'vegetables' },
-  { value: 'Cabbage',        group: 'vegetables' },
-  { value: 'Spinach',        group: 'vegetables' },
-  { value: 'Amaranth',       group: 'vegetables' },
-  { value: 'Sweet Pepper',   group: 'vegetables' },
-  { value: 'Pepper',         group: 'vegetables' },
-  { value: 'Cucumber',       group: 'vegetables' },
-  { value: 'Eggplant',       group: 'vegetables' },
-  { value: 'Carrot',         group: 'vegetables' },
-  { value: 'Watermelon',     group: 'vegetables' },
-  { value: 'Pumpkin',        group: 'vegetables' },
-  { value: 'Okra',           group: 'vegetables' },
-  { value: 'Green Bean',     group: 'vegetables' },
-  { value: 'Garlic',         group: 'vegetables' },
-  { value: 'Lettuce',        group: 'vegetables' },
-  // Legumes
-  { value: 'Common Bean',    group: 'legumes' },
-  { value: 'Cowpea',         group: 'legumes' },
-  { value: 'Groundnut',      group: 'legumes' },
-  { value: 'Pigeon Pea',     group: 'legumes' },
-  { value: 'Soybean',        group: 'legumes' },
-  { value: 'Chickpea',       group: 'legumes' },
-  // Root Crops
-  { value: 'Cassava',        group: 'rootCrops' },
-  { value: 'Sweet Potato',   group: 'rootCrops' },
-  { value: 'Irish Potato',   group: 'rootCrops' },
-  { value: 'Yam',            group: 'rootCrops' },
-  // Fruits
-  { value: 'Banana',         group: 'fruits' },
-  { value: 'Mango',          group: 'fruits' },
-  { value: 'Avocado',        group: 'fruits' },
-  { value: 'Coconut',        group: 'fruits' },
-  { value: 'Papaya',         group: 'fruits' },
-  { value: 'Pineapple',      group: 'fruits' },
-  { value: 'Orange',         group: 'fruits' },
-  { value: 'Passion Fruit',  group: 'fruits' },
-  { value: 'Guava',          group: 'fruits' },
-  { value: 'Jackfruit',      group: 'fruits' },
-  // Cash Crops
-  { value: 'Cashew',         group: 'cashCrops' },
-  { value: 'Coffee',         group: 'cashCrops' },
-  { value: 'Cotton',         group: 'cashCrops' },
-  { value: 'Sisal',          group: 'cashCrops' },
-  { value: 'Sunflower',      group: 'cashCrops' },
-  { value: 'Tea',            group: 'cashCrops' },
-  { value: 'Sugarcane',      group: 'cashCrops' },
-  { value: 'Tobacco',        group: 'cashCrops' },
-  { value: 'Sesame',         group: 'cashCrops' },
-  { value: 'Clove',          group: 'cashCrops' },
-  { value: 'Pyrethrum',      group: 'cashCrops' },
-];
-
-const CROP_EMOJI: Record<string, string> = {
-  Maize: '🌽', Rice: '🌾', Sorghum: '🌾', Millet: '🌾', Wheat: '🌾', Barley: '🌾',
-  Tomato: '🍅', Kale: '🥬', Onion: '🧅', Cabbage: '🥬', Spinach: '🥬', Amaranth: '🥬',
-  'Sweet Pepper': '🫑', Pepper: '🌶️', Cucumber: '🥒', Eggplant: '🍆', Carrot: '🥕',
-  Watermelon: '🍉', Pumpkin: '🎃', Okra: '🌿', 'Green Bean': '🫘', Garlic: '🧄', Lettuce: '🥗',
-  'Common Bean': '🫘', Cowpea: '🫘', Groundnut: '🥜', 'Pigeon Pea': '🫘', Soybean: '🫘', Chickpea: '🫘',
-  Cassava: '🌿', 'Sweet Potato': '🍠', 'Irish Potato': '🥔', Yam: '🍠',
-  Banana: '🍌', Mango: '🥭', Avocado: '🥑', Coconut: '🥥', Papaya: '🍈', Pineapple: '🍍',
-  Orange: '🍊', 'Passion Fruit': '🍈', Guava: '🍈', Jackfruit: '🍈',
-  Cashew: '🌰', Coffee: '☕', Cotton: '🌿', Sisal: '🌿', Sunflower: '🌻', Tea: '🍵',
-  Sugarcane: '🌿', Tobacco: '🌿', Sesame: '🌿', Clove: '🌿', Pyrethrum: '🌸',
-};
-
-const GROUP_ORDER = ['cereal', 'vegetables', 'legumes', 'rootCrops', 'fruits', 'cashCrops'] as const;
 
 export default function ZoneModal({ zone, onClose, onSave, onDelete, lang = 'en', maxAreaSize, usedAcres = 0 }: ZoneModalProps) {
   const isEditing = !!zone;

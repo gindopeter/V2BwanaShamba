@@ -60,6 +60,7 @@ router.get('/', isAuthenticated, async (req, res) => {
       return {
         ...zone,
         current_growth_day: diffDays,
+        total_growth_days: maxDays,
         growth_stage: getGrowthStage(diffDays, maxDays),
         expected_yield_kg: predictedYield,
         expected_harvest_date: harvestDate.toISOString(),

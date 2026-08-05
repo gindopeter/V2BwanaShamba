@@ -25,7 +25,7 @@ BwanaShamba V2 is a public, multi-tenant platform. Unlike V1 (which was a single
 A real-time operational view of the farmer's own zones. Each zone card shows the crop type, growth stage, irrigation status, and upcoming tasks. The dashboard header reflects the farmer's own location and farm size.
 
 ### Zone Management
-Farmers create and manage their own crop zones with planting dates, area sizes, and crop types. The app supports 13 crops: Tomato, Onion, Pepper, Cabbage, Spinach, Cucumber, Watermelon, Eggplant, Carrot, Lettuce, Okra, Green Bean, and Maize.
+Farmers create and manage their own crop zones with planting dates, area sizes, and crop types. The app supports 54 crops across six groups — cereals, vegetables, legumes, root crops, fruits, and cash crops — covering what Tanzanian smallholders actually grow, from maize, rice and cassava to coffee, cashew and cloves. Each crop carries its own days-to-harvest and expected yield per acre, which drive the growth stage, harvest date, and yield forecast. The authoritative list lives in `server/constants/crops.ts`.
 
 ### Task Management
 Pending, confirmed, completed, and missed tasks — all tied to the farmer's own zones. Task types: Irrigation, Fertigation, Scouting.

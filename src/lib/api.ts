@@ -6,6 +6,8 @@ export interface Zone {
   area_size: number;
   status: string;
   current_growth_day: number;
+  /** Days from planting to harvest for this crop, per server/constants/crops.ts. */
+  total_growth_days: number;
   expected_yield_kg: number;
   actual_yield_kg: number;
   expected_harvest_date: string;
