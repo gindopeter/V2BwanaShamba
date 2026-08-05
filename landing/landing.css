@@ -9,7 +9,10 @@ body { margin: 0; }
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   background: #07170d;
   color: #fff;
+  /* `clip` rather than `hidden`: hidden makes this a scroll container, which
+     breaks every `position: sticky` descendant (the scroll rigs below). */
   overflow-x: hidden;
+  overflow-x: clip;
   min-height: 100vh;
   min-height: 100dvh;
 }
@@ -74,31 +77,210 @@ body { margin: 0; }
 
 /* ── Sections ────────────────────────────────────────────────────────────── */
 .lp-section { position: relative; max-width: 1180px; margin: 0 auto; padding: clamp(72px, 11vw, 130px) clamp(20px, 5vw, 54px) 30px; }
-.lp-intro { max-width: 720px; }
+.lp-intro { max-width: 720px; margin-inline: auto; text-align: center; }
 .lp-eyebrow { display: block; font-size: 13px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: #FFCC00; }
 .lp-h2 { margin: 16px 0 0; font-size: clamp(30px, 5.2vw, 52px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
 .lp-lead { margin: 18px 0 0; font-size: clamp(15px, 2vw, 18px); line-height: 1.6; color: rgba(255,255,255,0.72); }
 
-/* ── Capabilities (mockup + text rows) ───────────────────────────────────── */
-.lp-caps {
-  max-width: 1180px; margin: 0 auto; padding: 20px clamp(20px, 5vw, 54px) 0;
-  display: flex; flex-direction: column; gap: clamp(70px, 11vw, 140px);
+/* ══ TRACK EVERYTHING ═══════════════════════════════════════════════════════
+   Scroll-driven: farm cards fly in from the edges and collapse into a stack,
+   then the stack dissolves into a list of the things BwanaShamba tracks.
+   Base styles are the *static fallback* (no JS / reduced motion): headline and
+   word list simply visible. `.is-armed` — added by JS — turns on the scroll rig. */
+.lp-track { position: relative; background: #07170d; }
+.lp-track-stage {
+  position: relative;
+  max-width: 1180px; margin: 0 auto;
+  padding: clamp(72px, 11vw, 130px) clamp(20px, 5vw, 54px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
 }
-.lp-cap-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: clamp(36px, 6vw, 80px); }
-.lp-cap-row.lp-reverse { flex-direction: row-reverse; }
-.lp-mock-wrap { flex: 1 1 360px; min-width: 300px; }
-.lp-cap-text { flex: 1 1 380px; min-width: 300px; }
+.lp-track-h {
+  margin: 0; font-weight: 800; letter-spacing: -0.035em; line-height: 1.02;
+  font-size: clamp(44px, 14vw, 200px); max-width: 10ch; color: #FFCC00;
+}
+.lp-track-cards { display: none; }
+
+.lp-track-list { list-style: none; margin: clamp(40px, 6vw, 72px) 0 0; padding: 0; }
+.lp-tl {
+  display: flex; align-items: center; justify-content: center;
+  gap: clamp(12px, 1.6vw, 22px);
+  margin-bottom: clamp(6px, 0.9vw, 12px);
+}
+.lp-tl-ic {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  width: clamp(38px, 5.2vw, 62px); height: clamp(38px, 5.2vw, 62px);
+  border-radius: clamp(11px, 1.5vw, 18px);
+}
+.lp-tl-ic svg { width: 58%; height: 58%; }
+.lp-tl-ic-gold  { background: #FFCC00; color: #1f2717; }
+.lp-tl-ic-sky   { background: #58A9C4; color: #06212b; }
+.lp-tl-ic-leaf  { background: #7FC24A; color: #10240b; }
+.lp-tl-ic-cream { background: #EFE7D2; color: #1f2717; }
+.lp-tl-ic-amber { background: #E8A93C; color: #2a1804; }
+.lp-tl-w {
+  font-weight: 800; letter-spacing: -0.04em; line-height: 1.06;
+  font-size: clamp(32px, 6.6vw, 74px);
+}
+.lp-tl-w-gold  { color: #FFCC00; }
+.lp-tl-w-sky   { color: #7FC6DC; }
+.lp-tl-w-leaf  { color: #9BD766; }
+.lp-tl-w-cream { color: #EFE7D2; }
+.lp-tl-w-amber { color: #F4BC57; }
+
+/* Flying farm tiles (armed mode only). Square and identically sized from
+   --tc-size, so when the rig lands them all on the same spot they align into
+   what reads as one block. Type scales off the tile to stay in proportion. */
+.lp-tc {
+  position: absolute; top: 50%; left: 50%;
+  width: var(--tc-size, 180px); height: var(--tc-size, 180px);
+  margin: calc(var(--tc-size, 180px) / -2) 0 0 calc(var(--tc-size, 180px) / -2);
+  font-size: max(7px, calc(var(--tc-size, 180px) / 14));
+  display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start;
+  padding: 1.15em; border-radius: calc(var(--tc-size, 180px) / 9); overflow: hidden;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.42);
+  text-align: left;
+}
+.lp-tc { align-items: stretch; }
+.lp-tc-top { display: flex; align-items: center; gap: 0.45em; font-size: 0.84em; font-weight: 700; opacity: 0.8; line-height: 1.15; }
+.lp-tc-top svg { flex-shrink: 0; width: 1.2em; height: 1.2em; }
+.lp-tc-foot { display: flex; flex-direction: column; gap: 0.15em; }
+
+/* ── Tile interior ────────────────────────────────────────────────────────
+   An oversized glyph bleeding off the bottom-right corner for texture, with a
+   two-line fragment of the real product UI riding above it. The glyph is kept
+   faint and pushed into the corner so it never fights the rows for legibility. */
+.lp-tc-mark {
+  position: absolute; right: -1.2em; bottom: -1.5em; z-index: 0;
+  opacity: 0.18; pointer-events: none;
+}
+.lp-tc-mark svg { width: 8em; height: 8em; }
+.lp-tc-top, .lp-tc-mid, .lp-tc-foot { position: relative; z-index: 1; }
+
+.lp-tc-mid { flex: 1; display: flex; align-items: center; padding: 0.5em 0; min-height: 0; }
+.lp-tc-rows { display: flex; flex-direction: column; gap: 0.4em; width: 100%; }
+.lp-tc-row {
+  display: flex; align-items: center; gap: 0.47em;
+  padding: 0.47em 0.6em; border-radius: 0.6em;
+  background: rgba(255,255,255,0.34);
+  font-size: 0.67em; font-weight: 700; line-height: 1.1;
+}
+.lp-tc-row-alt { background: rgba(0,0,0,0.14); }
+.lp-tc-row span { flex-shrink: 0; width: 0.62em; height: 0.62em; border-radius: 50%; background: rgba(0,0,0,0.45); }
+.lp-tc-row em { font-style: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-tc-row small { margin-left: auto; padding-left: 0.4em; font-size: 0.9em; opacity: 0.6; white-space: nowrap; }
+
+/* On a phone the tile is ~147px — one row, no trailing value, still legible. */
+.lp-track-mini .lp-tc-row small,
+.lp-track-mini .lp-tc-row-alt { display: none; }
+.lp-tc-big { font-size: 1.85em; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
+.lp-tc-big-sm { font-size: 1.5em; }
+.lp-tc-sub { font-size: 0.8em; font-weight: 600; opacity: 0.72; line-height: 1.2; }
+/* Below ~130px a tile can only carry the label and the headline figure. */
+.lp-track-mini .lp-tc-sub { display: none; }
+.lp-tc-sky   { background: #58A9C4; color: #052430; }
+.lp-tc-gold  { background: #FFCC00; color: #1f2717; }
+.lp-tc-leaf  { background: #7FC24A; color: #10240b; }
+.lp-tc-cream { background: #EFE7D2; color: #1f2717; }
+.lp-tc-amber { background: #E8A93C; color: #2a1804; }
+
+/* Armed: everything shares one centred grid cell so the headline, the card
+   swarm and the word list can cross-fade in place under scroll control. */
+.lp-track.is-armed { height: 440vh; }
+.lp-track.is-armed .lp-track-stage {
+  position: sticky; top: 0;
+  height: 100vh; height: 100svh;
+  max-width: none; padding: 0 clamp(20px, 5vw, 54px);
+  overflow: hidden;
+  display: grid; place-items: center;
+}
+.lp-track.is-armed .lp-track-h,
+.lp-track.is-armed .lp-track-cards,
+.lp-track.is-armed .lp-track-list { grid-area: 1 / 1; }
+/* Grid items, so z-index applies directly: headline under the tiles, which the
+   word list in turn rises above. */
+.lp-track.is-armed .lp-track-h { z-index: 1; }
+.lp-track.is-armed .lp-track-cards { display: block; position: relative; z-index: 3; align-self: stretch; justify-self: stretch; }
+.lp-track.is-armed .lp-track-list { margin: 0; z-index: 5; }
+.lp-track.is-armed .lp-tl { opacity: 0; }
+
+/* ══ CAPABILITIES — pinned card deck ════════════════════════════════════════
+   Modelled on lassie.ai, whose geometry and transforms I measured directly:
+   all cards sit at one absolute spot inside a pinned stage. The waiting ones
+   are parked slightly lower and scaled back so their edges peek out beneath;
+   the live one sits at rest; the spent one slides straight up and out at full
+   size. Only the panel moves — the copy beside it holds still and cross-fades.
+   Base styles are the static fallback (no JS / reduced motion): a plain
+   readable stack of copy-then-panel. `.is-armed` turns on the deck. */
+/* Width leads and height follows the 1100:693 aspect lassie uses, with a floor
+   so the tallest mockup always clears. 56vw keeps the copy inside the gutter
+   at every width down to the 900px fallback. */
+.lp-caps {
+  --panel-w: min(54vw, 860px);
+  --panel-h: max(390px, calc(var(--panel-w) / 1.587));
+  --copy-w: clamp(160px, 16vw, 250px);
+  max-width: 1280px; margin: 0 auto; padding: 20px clamp(20px, 4vw, 46px) 0;
+}
+.lp-cap-card { margin-bottom: clamp(56px, 9vw, 110px); }
 .lp-cap-index { font-size: 13px; font-weight: 800; letter-spacing: 0.14em; color: #FFCC00; }
-.lp-cap-title { margin: 10px 0 0; font-size: clamp(26px, 4vw, 40px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.08; }
-.lp-cap-text p { margin: 16px 0 0; font-size: clamp(15px, 1.9vw, 18px); line-height: 1.6; color: rgba(255,255,255,0.74); }
+.lp-cap-title { margin: 10px 0 0; font-size: clamp(23px, 2.2vw, 30px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.12; }
+.lp-cap-copy p { margin: 13px 0 0; font-size: clamp(13.5px, 1.02vw, 14.5px); line-height: 1.58; color: rgba(255,255,255,0.72); }
+
+/* The panel: a soft farm-toned field the mockup floats over. */
+.lp-cap-panel {
+  position: relative; overflow: hidden;
+  border-radius: clamp(20px, 1.9vw, 30px);
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(255,255,255,0.09);
+  box-shadow: 0 40px 90px rgba(0,0,0,0.55);
+}
+.lp-cap-panel::before {
+  content: ""; position: absolute; inset: -20%;
+  background: radial-gradient(45% 45% at 30% 25%, rgba(255,255,255,0.16), transparent 70%);
+  animation: lpDrift 18s ease-in-out infinite alternate;
+}
+@keyframes lpDrift { from { transform: translate3d(-4%, -3%, 0) scale(1); } to { transform: translate3d(6%, 5%, 0) scale(1.12); } }
+.lp-panel-1 { background: linear-gradient(150deg, #1d4a2c 0%, #0f2f1c 45%, #245036 100%); }
+.lp-panel-2 { background: linear-gradient(150deg, #3f3a15 0%, #16301a 48%, #4a3d12 100%); }
+.lp-panel-3 { background: linear-gradient(150deg, #235437 0%, #0d2716 45%, #3b5d24 100%); }
+.lp-panel-4 { background: linear-gradient(150deg, #14403c 0%, #0d2418 46%, #4a3b13 100%); }
+.lp-cap-panel .lp-mock { position: relative; z-index: 2; margin: 0 auto; }
+
+/* Armed: pin the stage and stack every card on the same spot. */
+.lp-caps.is-armed { position: relative; max-width: none; }
+.lp-caps.is-armed .lp-caps-stage {
+  position: sticky; top: max(74px, calc(50vh - var(--panel-h) / 2 - 26px));
+  height: calc(var(--panel-h) + 52px);
+}
+.lp-caps.is-armed .lp-cap-card {
+  position: absolute; left: 50%; top: 50%; margin: 0;
+  width: var(--panel-w); height: var(--panel-h);
+  transform: translate(-50%, -50%);
+}
+.lp-caps.is-armed .lp-cap-panel { width: 100%; height: 100%; transform-origin: 50% 50%; }
+/* The copy lives in the gutter beside the panel and never moves with it.
+   Centred against the panel's full height rather than pinned to a fixed
+   offset, so a four-line title can't push it past the fold. */
+.lp-caps.is-armed .lp-cap-copy {
+  position: absolute; top: 0; bottom: 0; left: 100%; margin-left: 22px;
+  width: var(--copy-w);
+  display: flex; flex-direction: column; justify-content: center;
+}
+.lp-caps.is-armed .lp-cap-card.lp-flip .lp-cap-copy {
+  left: auto; right: 100%; margin: 0 22px 0 0; text-align: right;
+}
+/* The chips repeat what the prose already says and there is no room for them
+   beside the panel — they stay in the phone layout only. */
+.lp-caps.is-armed .lp-chips { display: none; }
+/* The chat mock is the tallest — trim it so it floats inside the panel. */
+.lp-caps.is-armed .lp-cap-panel .lp-chat-body { height: clamp(190px, 26vh, 250px); }
 .lp-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
 .lp-chip { font-size: 12.5px; font-weight: 600; padding: 7px 13px; border-radius: 999px; background: rgba(232,239,222,0.07); border: 1px solid rgba(255,255,255,0.12); color: rgba(255,255,255,0.86); }
 
 /* ── Mockups: shared card ────────────────────────────────────────────────── */
-.lp-mock { position: relative; width: 100%; margin-top: 38px; }
+.lp-mock { position: relative; width: 100%; }
 .lp-mock-chat { max-width: 480px; }
 .lp-mock-tasks, .lp-mock-ms, .lp-mock-report { max-width: 410px; }
-.lp-cap-row.lp-reverse .lp-mock { margin-left: auto; }
 .lp-card {
   position: relative; border-radius: 26px; padding: 20px;
   background: rgba(12,30,18,0.86); border: 1px solid rgba(255,204,0,0.28);
@@ -222,24 +404,75 @@ body { margin: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   .lp-reveal-armed { opacity: 1; transform: none; transition: none; }
+  .lp-cap-panel::before { animation: none; }
   html { scroll-behavior: auto; }
 }
 
-/* ── Mobile ──────────────────────────────────────────────────────────────── */
-@media (max-width: 760px) {
-  /* Stack every capability as [description, animation] — column-reverse flips
-     the DOM order [mockup, text] so the explanation leads, then the animation. */
-  .lp-cap-row,
-  .lp-cap-row.lp-reverse { flex-direction: column-reverse; align-items: stretch; gap: 22px; }
-  .lp-caps { gap: 60px; }
-  /* Let every mockup fill the column width so blocks 2–4 line up with block 1
-     and with the text, instead of stopping short at their desktop max-width. */
-  .lp-mock-wrap { min-width: 0; }
+/* ── Tablet / mobile ─────────────────────────────────────────────────────── */
+/* The deck still runs — lassie pins the same animation on a phone. Only the
+   layout changes: the panel goes near-square and sits at the bottom of the
+   stage, with the copy stacked directly above it instead of in a gutter. */
+@media (max-width: 900px) {
+  .lp-caps {
+    --panel-w: min(92vw, 460px);
+    --panel-h: calc(var(--panel-w) / 1.05);
+    --copy-space: clamp(206px, 29vh, 262px);
+    --deck-h: calc(var(--copy-space) + 20px + var(--panel-h));
+  }
+  .lp-caps.is-armed .lp-caps-stage {
+    height: var(--deck-h);
+    top: max(74px, calc(50vh - var(--deck-h) / 2));
+  }
+  .lp-caps.is-armed .lp-cap-card,
+  .lp-caps.is-armed .lp-cap-card.lp-flip {
+    left: 50%; right: auto; top: auto; bottom: 0;
+    transform: translateX(-50%);
+  }
+  /* Copy sits above the panel, full width, always left-aligned. */
+  .lp-caps.is-armed .lp-cap-copy,
+  .lp-caps.is-armed .lp-cap-card.lp-flip .lp-cap-copy {
+    left: 0; right: auto; top: auto; bottom: 100%;
+    margin: 0 0 20px 0; width: 100%;
+    display: block; text-align: left;
+  }
+  /* The panel paints over the copy, not under it, so a departing panel hides
+     its own words on the way past. Our markup is [panel, copy], so without this
+     the copy would sit on top and show straight through the panel. */
+  .lp-caps.is-armed .lp-cap-panel { z-index: 2; }
+  .lp-caps.is-armed .lp-cap-copy { z-index: 1; }
+
+  /* Four panels are composited at once through the whole pinned section, so
+     anything per-frame here is paid four times over and shows up as scroll
+     judder. A 20px backdrop blur is the worst of it and buys nothing — the
+     panel behind the mockup is an opaque gradient. The drifting highlight and
+     the huge shadows go the same way. */
+  .lp-caps.is-armed .lp-card { backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .lp-caps.is-armed .lp-cap-panel::before { animation: none; }
+  .lp-caps.is-armed .lp-cap-panel { box-shadow: 0 18px 40px rgba(0,0,0,0.5); }
+
+  /* Only the lead paragraph fits above a panel on a phone. */
+  .lp-caps.is-armed .lp-cap-copy p + p { display: none; }
+  .lp-cap-title { font-size: clamp(21px, 5.6vw, 27px); }
+
+  /* Unarmed (no JS / reduced motion): plain flow, copy first. */
+  .lp-cap-card { display: flex; flex-direction: column-reverse; gap: 20px; }
+  .lp-cap-panel { height: auto; padding: 24px 16px; }
   .lp-mock,
   .lp-mock-chat,
   .lp-mock-tasks,
   .lp-mock-ms,
-  .lp-mock-report { width: 100%; max-width: 100%; margin-top: 0; margin-left: 0; margin-right: 0; }
+  .lp-mock-report { width: 100%; max-width: 100%; }
+}
+
+/* The cards are sized by the rig's transform, not by CSS, so phones only need
+   a shorter scroll runway here. */
+@media (max-width: 760px) {
+  .lp-track.is-armed { height: 400vh; }
+  /* Bigger headline on a phone than the shared 14vw. The ceiling is set by
+     "everything", which cannot wrap — it measures ~5.08px wide per 1px of
+     font-size, so 16vw keeps 20px of margin even on a 320px screen, where
+     17.5vw would overflow. Desktop is deliberately left on the base rule. */
+  .lp-track-h { font-size: clamp(44px, 16vw, 200px); }
 }
 
 /* Desktop / laptop: the chat card is wider, so its text wraps less and needs
