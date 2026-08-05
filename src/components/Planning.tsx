@@ -169,7 +169,7 @@ export default function Planning({ lang = 'en' }: { lang?: Language }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-black text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
-            📅 {lang === 'sw' ? 'Mipango ya Mazao' : 'Crop Planning'}
+            {lang === 'sw' ? 'Mipango ya Mazao' : 'Crop Planning'}
           </h2>
           <p className="text-xs text-[#5d6c7b] mt-0.5">
             {lang === 'sw'

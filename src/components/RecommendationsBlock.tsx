@@ -115,9 +115,6 @@ export default function RecommendationsBlock({
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-[#002c11]/5">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-[#035925]/10 rounded-lg flex items-center justify-center shrink-0">
-            <span className="text-base">🌿</span>
-          </div>
           <div>
             <h3 className="text-xs font-black text-[#002c11] uppercase tracking-[0.12em]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
               {t(lang, 'recommendations')}

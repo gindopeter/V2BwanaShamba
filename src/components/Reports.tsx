@@ -43,27 +43,49 @@ interface UserInfo {
 
 // ─── shared KPI summary bar ───────────────────────────────────────────────────
 
+// Performance is the only figure here carrying a state, so it is the only one that
+// spends colour. The state is always spelled out as a word beside the dot: a
+// green/amber/red ramp is unreadable to protanopes, so the hue reinforces the
+// label rather than replacing it.
+function performanceState(performance: string, lang: Language) {
+  if (performance === '—') return { color: '#7a7060', word: lang === 'sw' ? 'Hakuna data' : 'No data' };
+  const pct = parseInt(performance);
+  if (pct >= 80) return { color: '#1f7a45', word: lang === 'sw' ? 'Kwenye lengo' : 'On target' };
+  if (pct >= 50) return { color: '#a8752a', word: lang === 'sw' ? 'Chini ya lengo' : 'Below target' };
+  return { color: '#9c3428', word: lang === 'sw' ? 'Chini sana' : 'Well below' };
+}
+
 function SummaryBar({
   zoneCount, totalArea, totalExpected, totalActual, performance, lang,
 }: {
   zoneCount: number; totalArea: number; totalExpected: number;
   totalActual: number; performance: string; lang: Language;
 }) {
-  const kpis = [
-    { label: lang === 'sw' ? 'Maeneo' : 'Total Zones',       value: String(zoneCount),                  icon: '🌱', color: '#035925' },
-    { label: lang === 'sw' ? 'Eneo Lote' : 'Total Area',      value: `${totalArea.toFixed(1)} ac`,        icon: '📐', color: '#0082f3' },
-    { label: lang === 'sw' ? 'Mavuno Yanayotarajiwa' : 'Expected Yield', value: `${fmt(totalExpected)} kg`, icon: '📊', color: '#fc8e44' },
-    { label: lang === 'sw' ? 'Mavuno Halisi' : 'Actual Yield', value: `${fmt(totalActual)} kg`,           icon: '🌾', color: '#035925' },
-    { label: lang === 'sw' ? 'Utendaji' : 'Performance',      value: performance,                          icon: '🎯',
-      color: performance === '—' ? '#5d6c7b' : parseInt(performance) >= 80 ? '#035925' : parseInt(performance) >= 50 ? '#fc8e44' : '#d32f2f' },
+  const state = performanceState(performance, lang);
+  const kpis: { label: string; value: string; state?: typeof state }[] = [
+    { label: lang === 'sw' ? 'Maeneo' : 'Total Zones', value: String(zoneCount) },
+    { label: lang === 'sw' ? 'Eneo Lote' : 'Total Area', value: `${totalArea.toFixed(1)} ac` },
+    { label: lang === 'sw' ? 'Mavuno Yanayotarajiwa' : 'Expected Yield', value: `${fmt(totalExpected)} kg` },
+    { label: lang === 'sw' ? 'Mavuno Halisi' : 'Actual Yield', value: `${fmt(totalActual)} kg` },
+    { label: lang === 'sw' ? 'Utendaji' : 'Performance', value: performance, state },
   ];
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
       {kpis.map(k => (
-        <div key={k.label} className="bg-white rounded-xl p-4 shadow-sm border border-[#002c11]/[0.06] border-l-[3px]" style={{ borderLeftColor: k.color }}>
-          <span className="text-xl block mb-1.5">{k.icon}</span>
-          <p className="text-lg font-black text-[#002c11] leading-tight" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>{k.value}</p>
-          <p className="text-[10px] text-[#5d6c7b] mt-0.5">{k.label}</p>
+        <div key={k.label} className="rounded-2xl p-4 bg-[#fffdf8] border border-[#002c11]/[0.08]">
+          <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#7a7060]">{k.label}</p>
+          <p
+            className="text-[24px] font-black text-[#002c11] leading-none mt-2"
+            style={{ fontFamily: "'Instrument Sans', sans-serif", letterSpacing: '-0.03em' }}
+          >
+            {k.value}
+          </p>
+          {k.state && (
+            <p className="flex items-center gap-1.5 text-[10px] text-[#7a7060] mt-2">
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: k.state.color }} />
+              {k.state.word}
+            </p>
+          )}
         </div>
       ))}
     </div>
@@ -300,7 +322,7 @@ export default function Reports({
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-black text-[#002c11]" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>
-            📊 {lang === 'sw' ? 'Ripoti' : 'Reports'}
+            {lang === 'sw' ? 'Ripoti' : 'Reports'}
           </h2>
           {/* Farm owner + location */}
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
@@ -360,14 +382,14 @@ export default function Reports({
               className="px-3 py-1.5 text-[11px] font-bold transition-colors"
               style={{ background: dateField === 'planting_date' ? '#002c11' : 'transparent', color: dateField === 'planting_date' ? 'white' : '#5d6c7b' }}
             >
-              🌱 {lang === 'sw' ? 'Tarehe ya Kupanda' : 'Planting Date'}
+              {lang === 'sw' ? 'Tarehe ya Kupanda' : 'Planting Date'}
             </button>
             <button
               onClick={() => setDateField('expected_harvest_date')}
               className="px-3 py-1.5 text-[11px] font-bold transition-colors border-l border-[#002c11]/10"
               style={{ background: dateField === 'expected_harvest_date' ? '#002c11' : 'transparent', color: dateField === 'expected_harvest_date' ? 'white' : '#5d6c7b' }}
             >
-              🌾 {lang === 'sw' ? 'Tarehe ya Kuvuna' : 'Harvest Date'}
+              {lang === 'sw' ? 'Tarehe ya Kuvuna' : 'Harvest Date'}
             </button>
           </div>
         </div>
