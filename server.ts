@@ -343,6 +343,10 @@ Jibu kwa JSON tu, bila markdown:
     }
   });
 
+  // How long GET /api/planning waits for missing plans to be generated before
+  // answering with whatever is ready; the rest keep generating in the background.
+  const PLANNING_GENERATE_TIMEOUT_MS = 45_000;
+
   // ── GET /api/planning ─────────────────────────────────────────────────────
   // Returns stored plans from DB. Generates missing ones on-the-fly.
   app.get('/api/planning', isAuthenticated, async (req, res) => {
@@ -360,7 +364,7 @@ Jibu kwa JSON tu, bila markdown:
         ),
       ]);
 
-      if (!zones || zones.length === 0) return res.json({ plans: [] });
+      if (!zones || zones.length === 0) return res.json({ plans: [], zone_count: 0 });
 
       const location = [
         userProfile?.district ? `${userProfile.district} District` : null,
@@ -384,15 +388,34 @@ Jibu kwa JSON tu, bila markdown:
       const plansByZoneId: Record<number, any> = {};
       (storedPlans as any[]).forEach(p => { plansByZoneId[p.zone_id] = p; });
 
-      // For zones without a stored plan, generate one async (fire-and-forget)
-      const missing = enriched.filter(z => !plansByZoneId[z.id]);
+      // Zones without a stored plan: generate now and wait, so the first load
+      // returns real plans instead of an empty list the client can't tell apart
+      // from "this farm has no zones". Capped so a slow model can't hang the request.
+      // A plan stored in the other language is regenerated: a Swahili farmer
+      // should not be reading English milestones.
+      const missing = enriched.filter(z => plansByZoneId[z.id]?.lang !== lang);
       if (missing.length > 0) {
-        missing.forEach(z => {
+        const generation = Promise.allSettled(missing.map(z =>
           generateAndSavePlan(
             { id: z.id, user_id: userId, name: z.name, crop_type: z.crop_type, planting_date: z.planting_date, area_size: z.area_size },
             location, lang
-          ).catch(err => console.error('[planning] bg generate failed:', err.message));
-        });
+          ).catch(err => {
+            console.error('[planning] generate failed for zone', z.id, '-', err.message);
+            throw err;
+          })
+        ));
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          generation,
+          new Promise(resolve => { timer = setTimeout(resolve, PLANNING_GENERATE_TIMEOUT_MS); }),
+        ]);
+        clearTimeout(timer);
+
+        const refreshed = await dbAll(
+          'SELECT zone_id, milestones, lang, generated_at FROM zone_plans WHERE user_id = ?',
+          userId
+        );
+        (refreshed as any[]).forEach(p => { plansByZoneId[p.zone_id] = p; });
       }
 
       const today = new Date();
@@ -416,7 +439,9 @@ Jibu kwa JSON tu, bila markdown:
           };
         });
 
-      res.json({ plans });
+      // zone_count lets the client distinguish "no zones yet" from
+      // "you have zones but their plans could not be built".
+      res.json({ plans, zone_count: enriched.length });
     } catch (err: any) {
       console.error('[planning] GET error:', err.message);
       res.status(500).json({ plans: [] });

@@ -80,7 +80,10 @@ export async function dbRun(sql: string, ...params: any[]): Promise<{ lastInsert
     let pgSql = c.sql;
     const isInsert = /^\s*INSERT/i.test(pgSql);
     if (isInsert && !/RETURNING/i.test(pgSql)) {
-      pgSql += ' RETURNING id';
+      // RETURNING * (not "id") — some tables key on another column, e.g.
+      // zone_plans(zone_id PRIMARY KEY). Asking for a non-existent "id" made
+      // every insert into those tables fail with 42703 on Postgres.
+      pgSql += ' RETURNING *';
     }
     const result = await pgPool.query(pgSql, c.params);
     return {

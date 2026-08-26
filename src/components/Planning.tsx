@@ -67,6 +67,7 @@ export default function Planning({ lang = 'en' }: { lang?: Language }) {
   const [error,    setError]    = useState('');
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const [regenerating, setRegenerating] = useState<Partial<Record<number | 'all', boolean>>>({});
+  const [zoneCount, setZoneCount] = useState(0);
 
   async function fetchPlanning() {
     setLoading(true);
@@ -80,6 +81,7 @@ export default function Planning({ lang = 'en' }: { lang?: Language }) {
       const data = await res.json();
       const fetched: ZonePlan[] = data.plans || [];
       setPlans(fetched);
+      setZoneCount(typeof data.zone_count === 'number' ? data.zone_count : fetched.length);
       // Auto-expand the zone with a "current" milestone
       setExpanded(prev => {
         const next: Record<number, boolean> = { ...prev };
@@ -117,7 +119,9 @@ export default function Planning({ lang = 'en' }: { lang?: Language }) {
       if (!res.ok) throw new Error('Regenerate failed');
       await fetchPlanning();
     } catch {
-      // silently ignore — fetchPlanning will show error state if needed
+      setError(lang === 'sw'
+        ? 'Imeshindwa kutayarisha mpango. Jaribu tena.'
+        : 'Could not build the plan. Please try again.');
     } finally {
       setRegenerating(prev => ({ ...prev, [key]: false }));
     }
@@ -207,8 +211,8 @@ export default function Planning({ lang = 'en' }: { lang?: Language }) {
         </div>
       )}
 
-      {/* No zones */}
-      {!loading && !error && plans.length === 0 && (
+      {/* Empty: no zones at all */}
+      {!loading && !error && plans.length === 0 && zoneCount === 0 && (
         <div className="bg-white rounded-xl p-10 text-center shadow-sm border border-[#002c11]/[0.06]">
           <CalendarDays className="w-8 h-8 text-[#002c11]/20 mx-auto mb-3" />
           <p className="text-sm text-[#5d6c7b]">
@@ -216,6 +220,25 @@ export default function Planning({ lang = 'en' }: { lang?: Language }) {
               ? 'Hakuna mipango iliyohifadhiwa. Ongeza eneo ili mipango yako itayarishwe.'
               : 'No crop plans yet. Add a zone — plans are generated automatically.'}
           </p>
+        </div>
+      )}
+
+      {/* Empty: zones exist but their plans could not be built */}
+      {!loading && !error && plans.length === 0 && zoneCount > 0 && (
+        <div className="bg-white rounded-xl p-10 text-center shadow-sm border border-[#002c11]/[0.06]">
+          <CalendarDays className="w-8 h-8 text-[#002c11]/20 mx-auto mb-3" />
+          <p className="text-sm text-[#5d6c7b]">
+            {lang === 'sw'
+              ? 'Mipango ya maeneo yako bado haijatayarishwa. Bonyeza "Onyesha Upya Zote" kujaribu tena.'
+              : 'Plans for your zones have not been built yet. Tap “Regenerate All” to try again.'}
+          </p>
+          <button
+            onClick={() => regeneratePlan()}
+            disabled={!!regenerating['all']}
+            className="mt-3 text-[12px] font-bold text-[#035925] underline disabled:opacity-50"
+          >
+            {lang === 'sw' ? 'Jaribu tena' : 'Try again'}
+          </button>
         </div>
       )}
 

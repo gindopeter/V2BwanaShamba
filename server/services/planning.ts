@@ -21,8 +21,37 @@ export function computeStatus(ms: StoredMilestone, today: Date): 'completed' | '
   return 'upcoming';
 }
 
-export async function generateAndSavePlan(
-  zone: { id: number; user_id: number; name: string; crop_type: string; planting_date: string; area_size: number },
+interface PlanZone {
+  id: number;
+  user_id: number;
+  name: string;
+  crop_type: string;
+  planting_date: string;
+  area_size: number;
+}
+
+/**
+ * Generation is triggered from two places (zone creation and GET /api/planning),
+ * so the same zone can be requested twice within seconds. Share the in-flight
+ * promise instead of paying for — and racing — two identical LLM calls.
+ */
+const inFlight = new Map<string, Promise<void>>();
+
+export function generateAndSavePlan(
+  zone: PlanZone,
+  location: string,
+  lang: 'en' | 'sw'
+): Promise<void> {
+  const key = `${zone.id}:${lang}`;
+  const existing = inFlight.get(key);
+  if (existing) return existing;
+  const run = buildAndSavePlan(zone, location, lang).finally(() => inFlight.delete(key));
+  inFlight.set(key, run);
+  return run;
+}
+
+async function buildAndSavePlan(
+  zone: PlanZone,
   location: string,
   lang: 'en' | 'sw'
 ): Promise<void> {

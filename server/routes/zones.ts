@@ -122,7 +122,7 @@ router.post('/', isAuthenticated, async (req, res) => {
     res.status(201).json({ id: info.lastInsertRowid, expected_yield_kg: expectedYieldKg });
 
     // Fire-and-forget: generate crop plan for the new zone
-    const userProfile = await dbGet('SELECT region, district FROM users WHERE id = ?', userId) as any;
+    const userProfile = await dbGet('SELECT region, district, language FROM users WHERE id = ?', userId) as any;
     const location = [
       userProfile?.district ? `${userProfile.district} District` : null,
       userProfile?.region   ? `${userProfile.region} Region`     : null,
@@ -131,7 +131,7 @@ router.post('/', isAuthenticated, async (req, res) => {
     generateAndSavePlan(
       { id: Number(info.lastInsertRowid), user_id: userId, name: name.trim(), crop_type, planting_date, area_size: parsedArea },
       location,
-      'en'  // default; user can regenerate in their preferred language
+      userProfile?.language === 'sw' ? 'sw' : 'en'
     ).catch(err => console.error('[planning] Auto-generate failed for new zone:', err.message));
   } catch (err: any) {
     console.error('[zones] POST error:', err.message);
