@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Lock, User, Shield, Trash2, Plus, Check, AlertCircle, Eye, EyeOff, UserPlus, Edit2, X, UserX, UserCheck, Globe, Brain } from 'lucide-react';
+import { Lock, User, Shield, Trash2, Plus, Check, AlertCircle, Eye, EyeOff, UserPlus, Edit2, X, UserX, UserCheck, Globe, Brain, BarChart3 } from 'lucide-react';
 import type { AuthUser } from '../App';
 import { type Language, t, TANZANIA_REGIONS, getRegionName } from '../lib/i18n';
 import { fetchMemories, deleteMemory, type Memory } from '../lib/api';
+import MetricsSection from './MetricsSection';
 
 interface SettingsPageProps {
   user: AuthUser;
@@ -11,10 +12,10 @@ interface SettingsPageProps {
 }
 
 export default function SettingsPage({ user, onUserUpdate, lang = 'en' }: SettingsPageProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'password' | 'memory' | 'users'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'password' | 'memory' | 'users' | 'metrics'>('profile');
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className={`${activeTab === 'metrics' ? 'max-w-6xl' : 'max-w-3xl'} mx-auto space-y-6`}>
       <div className="flex gap-2 bg-white border border-[#002c11]/10 rounded-xl p-1.5 shadow-sm flex-wrap">
         <TabButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<User size={16} />} label={t(lang, 'profile')} />
         <TabButton active={activeTab === 'password'} onClick={() => setActiveTab('password')} icon={<Lock size={16} />} label={t(lang, 'changePassword')} />
@@ -22,12 +23,16 @@ export default function SettingsPage({ user, onUserUpdate, lang = 'en' }: Settin
         {user.role === 'admin' && (
           <TabButton active={activeTab === 'users'} onClick={() => setActiveTab('users')} icon={<Shield size={16} />} label={t(lang, 'manageUsers')} />
         )}
+        {user.role === 'admin' && (
+          <TabButton active={activeTab === 'metrics'} onClick={() => setActiveTab('metrics')} icon={<BarChart3 size={16} />} label="Metrics" />
+        )}
       </div>
 
       {activeTab === 'profile' && <ProfileSection user={user} onUserUpdate={onUserUpdate} lang={lang} />}
       {activeTab === 'password' && <PasswordSection lang={lang} />}
       {activeTab === 'memory' && <MemorySection lang={lang} />}
       {activeTab === 'users' && user.role === 'admin' && <UsersSection currentUserId={user.id} />}
+      {activeTab === 'metrics' && user.role === 'admin' && <MetricsSection />}
     </div>
   );
 }

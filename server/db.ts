@@ -1,5 +1,6 @@
 import path from 'path';
 import os from 'os';
+import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 
 let pgPool: any = null;
@@ -253,6 +254,22 @@ async function createSchema() {
     )
   `);
   await dbExec(`CREATE INDEX IF NOT EXISTS idx_user_memory_user ON user_memory(user_id)`);
+
+  // Append-only record of what people do in the app. Deliberately schema-light:
+  // `event` is a short verb and `metadata` optional JSON, so recording something
+  // new never needs a migration.
+  await dbExec(`
+    CREATE TABLE IF NOT EXISTS user_events (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      user_id INTEGER,
+      event TEXT NOT NULL,
+      metadata TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await dbExec(`CREATE INDEX IF NOT EXISTS idx_user_events_created ON user_events(created_at)`);
+  await dbExec(`CREATE INDEX IF NOT EXISTS idx_user_events_user ON user_events(user_id)`);
+  await dbExec(`CREATE INDEX IF NOT EXISTS idx_user_events_event ON user_events(event)`);
 }
 
 async function runMigrations() {
@@ -301,6 +318,14 @@ async function runMigrations() {
     }
     if (userColNames.length > 0 && !userColNames.includes('phone_verified')) {
       await pgPool.query("ALTER TABLE users ADD COLUMN phone_verified INTEGER DEFAULT 0");
+    }
+    // Activity columns. Nullable with no default, so ADD COLUMN is metadata-only
+    // on Postgres and does not rewrite the table.
+    if (userColNames.length > 0 && !userColNames.includes('last_login_at')) {
+      await pgPool.query("ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP");
+    }
+    if (userColNames.length > 0 && !userColNames.includes('login_count')) {
+      await pgPool.query("ALTER TABLE users ADD COLUMN login_count INTEGER DEFAULT 0");
     }
 
     // Allow phone-only registration: drop NOT NULL on email if it exists
@@ -367,6 +392,12 @@ async function runMigrations() {
     if (usersColumns.length > 0 && !usersColumns.includes('phone_verified')) {
       sqliteDb.exec("ALTER TABLE users ADD COLUMN phone_verified INTEGER DEFAULT 0");
     }
+    if (usersColumns.length > 0 && !usersColumns.includes('last_login_at')) {
+      sqliteDb.exec("ALTER TABLE users ADD COLUMN last_login_at TEXT");
+    }
+    if (usersColumns.length > 0 && !usersColumns.includes('login_count')) {
+      sqliteDb.exec("ALTER TABLE users ADD COLUMN login_count INTEGER DEFAULT 0");
+    }
 
     if (!columnNames.includes('current_growth_day')) {
       sqliteDb.exec("ALTER TABLE zones ADD COLUMN current_growth_day INTEGER DEFAULT 0");
@@ -390,13 +421,17 @@ async function runMigrations() {
 async function seedData() {
   const usersCount = await dbGet('SELECT count(*) as count FROM users');
   if (usersCount.count === 0 || usersCount.count === '0') {
-    const hash = await bcrypt.hash('admin123', 10);
+    // A fixed password here would be published in the repository, so anyone who
+    // read it could sign in as an administrator of a fresh deployment. Generate
+    // one instead and print it once: it exists only in this startup's logs.
+    const password = randomBytes(18).toString('base64url');
+    const hash = await bcrypt.hash(password, 10);
     await dbRun(
       'INSERT INTO users (email, password_hash, first_name, last_name, role, email_verified, language) VALUES (?, ?, ?, ?, ?, ?, ?)',
       'admin@bwanashamba.com', hash, 'Platform', 'Admin', 'admin', 1, 'en'
     );
-    // Do NOT log the password — check server logs only during initial setup
-    console.log('[DB] Seeded platform admin: admin@bwanashamba.com (change password on first login)');
+    console.log('[DB] Seeded platform admin: admin@bwanashamba.com');
+    console.log(`[DB] One-time password (shown only now, change it after signing in): ${password}`);
   }
 }
 

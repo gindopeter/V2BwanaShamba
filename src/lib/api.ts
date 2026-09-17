@@ -122,3 +122,48 @@ export async function deleteMemory(id: number) {
   if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Failed to delete memory'); }
   return res.json();
 }
+
+export interface Metrics {
+  window_days: number;
+  generated_at: string;
+  users: {
+    total: number;
+    active: number;
+    deactivated: number;
+    verified: number;
+    unverified: number;
+    admins: number;
+  };
+  activity: {
+    day_1: number;
+    day_7: number;
+    day_30: number;
+    users_with_login_recorded: number;
+    tracking_since: string | null;
+  };
+  signups_by_day: { date: string; count: number }[];
+  regions: { region: string; count: number }[];
+  engagement: {
+    zones: number;
+    users_with_zones: number;
+    tasks_completed: number;
+    tasks_recent: number;
+    chat_messages_recent: number;
+  };
+  funnel: {
+    guest_chatters: number;
+    registered: number;
+    verified: number;
+    added_a_zone: number;
+  };
+  events: { event: string; count: number }[];
+}
+
+export async function fetchMetrics(): Promise<Metrics> {
+  const res = await fetch('/api/admin/metrics', { credentials: 'include' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || 'Failed to load metrics');
+  }
+  return res.json();
+}
