@@ -16,7 +16,10 @@ import { TANZANIA_DISTRICT_COORDS } from './server/constants/district_coords.ts'
 import { getDaysToHarvest, getGrowthStage } from './server/constants/crops.ts';
 import { generateAndSavePlan, computeStatus, type StoredMilestone } from './server/services/planning.ts';
 
+import { installProcessHandlers, requestLogger, errorHandler } from './server/observability.ts';
+
 import authRoutes from './server/routes/auth.ts';
+import healthRoutes from './server/routes/health.ts';
 import zoneRoutes from './server/routes/zones.ts';
 import taskRoutes from './server/routes/tasks.ts';
 import chatRoutes from './server/routes/chat.ts';
@@ -52,6 +55,10 @@ function validateEnvironment() {
 }
 
 async function startServer() {
+  // Registered first so anything that fails during startup is logged rather
+  // than vanishing into an unhandled rejection.
+  installProcessHandlers();
+
   validateEnvironment();
 
   console.log(`[startup] NODE_ENV=${process.env.NODE_ENV}, PORT=${process.env.PORT || 5000}, CWD=${process.cwd()}`);
@@ -70,6 +77,10 @@ async function startServer() {
 
   // Cloud Run sits behind exactly one Google proxy; req.ip is set correctly by Express.
   app.set('trust proxy', 1);
+
+  // One structured line per request, after trust proxy so remoteIp is the real
+  // client rather than the Google front end.
+  app.use(requestLogger);
 
   const sessionSecret =
     process.env.SESSION_SECRET ||
@@ -116,9 +127,7 @@ async function startServer() {
     console.log('[startup] Using SQLite session store');
   }
 
-  app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', database: isPostgres ? 'postgresql' : 'sqlite' });
-  });
+  app.use('/api/health', healthRoutes);
 
   app.use('/api/auth', authRoutes);
   app.use('/api/zones', zoneRoutes);
@@ -578,6 +587,10 @@ Jibu kwa JSON tu, bila markdown:
       }
     });
   }
+
+  // Last in the chain, so it catches anything thrown or passed to next() by any
+  // route registered above — including the static and SPA fallbacks.
+  app.use(errorHandler);
 
   httpServer.listen(port, () => {
     console.log(`[startup] Server running on port ${port}`);
