@@ -178,7 +178,7 @@ export default function MetricsSection() {
           ) : (
             <dl className="space-y-3">
               {events.map(e => (
-                <Row key={e.event} label={e.event.replace(/_/g, ' ')} value={e.count} />
+                <Row key={e.event} label={e.event.replace(/_/g, ' ')} value={e.count} capitalize />
               ))}
             </dl>
           )}
@@ -211,10 +211,11 @@ function Stat({ label, value, note, small }: { label: string; value: number; not
   );
 }
 
-function Row({ label, value }: { label: string; value: number }) {
+/** `capitalize` is for raw event names ("login"); written labels keep their own case. */
+function Row({ label, value, capitalize }: { label: string; value: number; capitalize?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-sm text-[#5d6c7b] capitalize">{label}</dt>
+      <dt className={`text-sm text-[#5d6c7b] ${capitalize ? 'first-letter:uppercase' : ''}`}>{label}</dt>
       <dd className="text-sm font-semibold text-[#002c11] tabular-nums">{value.toLocaleString()}</dd>
     </div>
   );
