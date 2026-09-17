@@ -18,7 +18,7 @@ export default function YieldCard({ zone, onUpdate }: { zone: Zone, onUpdate: ()
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-bold text-[#002c11] flex items-center gap-2">
           <TrendingUp className="w-5 h-5 text-[#035925]" />
-          Yield Forecast
+          Yield Target
         </h3>
         <span className="text-xs font-medium px-2 py-1 bg-[#002c11]/5 text-[#5d6c7b] rounded-full">
           {zone.name}
@@ -27,15 +27,18 @@ export default function YieldCard({ zone, onUpdate }: { zone: Zone, onUpdate: ()
 
       <div className="space-y-4">
         <div>
-          <p className="text-xs text-[#5d6c7b] uppercase font-medium mb-1">Predicted Yield</p>
+          <p className="text-xs text-[#5d6c7b] uppercase font-medium mb-1">
+            Target Yield{zone.yield_basis === 'per-year' ? ' (per year)' : ''}
+          </p>
           <div className="flex items-baseline gap-1">
             <span className="text-2xl font-bold text-[#002c11]">
               {(zone.expected_yield_kg / 1000).toFixed(1)}
             </span>
             <span className="text-sm text-[#5d6c7b]">tons</span>
           </div>
-          <p className="text-xs text-[#035925] mt-1">
-            Based on current weather & growth
+          <p className="text-xs text-[#5d6c7b] mt-1">
+            {zone.area_size} acres at a well-managed rate for {zone.crop_type}
+            {zone.yield_basis === 'per-year' ? ', once the crop is bearing' : ''}
           </p>
         </div>
 
