@@ -18,6 +18,7 @@ import { generateAndSavePlan, computeStatus, type StoredMilestone } from './serv
 
 import { installProcessHandlers, requestLogger, errorHandler } from './server/observability.ts';
 
+import adminRoutes from './server/routes/admin.ts';
 import authRoutes from './server/routes/auth.ts';
 import healthRoutes from './server/routes/health.ts';
 import zoneRoutes from './server/routes/zones.ts';
@@ -130,6 +131,7 @@ async function startServer() {
   app.use('/api/health', healthRoutes);
 
   app.use('/api/auth', authRoutes);
+  app.use('/api/admin', adminRoutes);
   app.use('/api/zones', zoneRoutes);
   app.use('/api/tasks', taskRoutes);
   app.use('/api/memory', memoryRoutes);

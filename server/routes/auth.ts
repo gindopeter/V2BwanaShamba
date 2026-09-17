@@ -5,6 +5,7 @@ import { dbAll, dbGet, dbRun, isPostgres, getSqliteDb, getPgPool } from '../db.t
 import { isAuthenticated, isAdmin } from '../middleware/auth.ts';
 import { createOtp, getActiveOtp, verifyOtp, deliverPhoneOtp, sendEmailOtp, ensureOtpTable } from '../services/otp.ts';
 import { verifyFirebasePhoneToken } from '../services/firebasePhone.ts';
+import { recordLogin, recordEvent } from '../analytics.ts';
 
 const otpRateLimit = rateLimit({
   windowMs: 10 * 60 * 1000,
@@ -53,6 +54,8 @@ router.post('/login', async (req, res) => {
 
       req.session.save((err) => {
         if (err) return res.status(500).json({ message: 'Session error' });
+        // Fire-and-forget: never delays or fails the sign-in.
+        recordLogin(user.id, email ? 'email' : 'phone');
         const farmSize = user.farm_size_acres != null ? parseFloat(user.farm_size_acres) : null;
         res.json({
           id: user.id,
@@ -142,6 +145,8 @@ router.post('/register', async (req, res) => {
       req.session.lastActivity = Date.now();
       req.session.save((err) => {
         if (err) return res.status(500).json({ message: 'Session error' });
+        recordEvent(newUser.id, 'signup', { method: 'password' });
+        recordLogin(newUser.id, 'password');
         res.json(newUser);
       });
     });
@@ -279,6 +284,8 @@ router.post('/verify-otp', otpRateLimit, async (req, res) => {
       req.session.lastActivity = Date.now();
       req.session.save((err) => {
         if (err) return res.status(500).json({ message: 'Session error' });
+        recordEvent(newUser.id, 'signup', { method: 'otp' });
+        recordLogin(newUser.id, 'otp');
         res.json(newUser);
       });
     });
