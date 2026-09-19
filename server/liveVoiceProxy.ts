@@ -4,6 +4,7 @@ import { GoogleGenAI, Modality } from '@google/genai';
 import { randomUUID } from 'crypto';
 import { URL } from 'url';
 import { dbGet, dbAll } from './db.ts';
+import { FARM_TOOL_DECLARATIONS, runFarmTool } from './services/chatTools.ts';
 
 const BASE_SYSTEM_INSTRUCTION =
   'LANGUAGE RULE — HIGHEST PRIORITY: Listen to what language the user is speaking RIGHT NOW. ' +
@@ -16,7 +17,12 @@ const BASE_SYSTEM_INSTRUCTION =
   'You know Tanzania\'s soil types by region (e.g. red laterite in Arusha, black clay in Mbeya, volcanic soils on Kilimanjaro), ' +
   'rainfall patterns, seasonal calendars, and can draw on satellite/remote-sensing knowledge for soil and land analysis. ' +
   'When asked, you can compare Tanzania\'s agriculture to other countries and highlight lessons applicable to Tanzanian farmers. ' +
-  'Tailor every answer to the farmer\'s specific region and crops. Keep answers practical, concise, and actionable.';
+  'Tailor every answer to the farmer\'s specific region and crops. Keep answers practical, concise, and actionable. ' +
+  'TASK LIST: you can add tasks to the farmer\'s task list. When they ask you to add, schedule or remind them of ' +
+  'a task, first call list_zones and pick a zone_id from their own zones — never guess one — then call create_task ' +
+  'with a task_type of Irrigation, Fertigation or Scouting. Only say the task has been added if create_task returned ' +
+  'success: true; if it returned an error, tell them plainly it could not be saved and why. Never confirm a task you ' +
+  'did not create. Say the tasks out loud naturally — the farmer is listening, not reading.';
 
 async function buildSystemInstruction(userId: number): Promise<string> {
   try {
@@ -114,6 +120,27 @@ async function handleSession(ws: WebSocket, userId: number) {
   // rejection (before the session was ready) from a normal end-of-session close.
   let setupCompleted = false;
 
+  async function handleToolCall(functionCalls: any[]) {
+    const functionResponses: any[] = [];
+    let tasksChanged = false;
+
+    for (const call of functionCalls) {
+      const response = await runFarmTool(call.name, call.args || {}, userId);
+      if (call.name === 'create_task' && response?.success) tasksChanged = true;
+      functionResponses.push({ id: call.id, name: call.name, response });
+    }
+
+    try {
+      geminiSession?.sendToolResponse({ functionResponses });
+    } catch (err: any) {
+      console.error('[LiveProxy] Failed to send tool response:', err.message);
+      return;
+    }
+
+    // Let the browser refresh its task list the same way the chat path does.
+    if (tasksChanged) send({ type: 'tasks_changed' });
+  }
+
   try {
     console.log('[LiveProxy] Connecting to Gemini Live API...');
     geminiSession = await ai.live.connect({
@@ -124,6 +151,7 @@ async function handleSession(ws: WebSocket, userId: number) {
         systemInstruction: systemInstruction,
         outputAudioTranscription: {},
         inputAudioTranscription: {},
+        tools: [{ functionDeclarations: FARM_TOOL_DECLARATIONS }],
       },
       callbacks: {
         onopen: () => {
@@ -139,6 +167,13 @@ async function handleSession(ws: WebSocket, userId: number) {
 
           if (message.serverContent?.interrupted) {
             send({ type: 'interrupted' });
+            return;
+          }
+
+          // The voice model asked to run a tool. Execute it and hand the result
+          // back, so what it says next reflects whether the write succeeded.
+          if (message.toolCall?.functionCalls?.length) {
+            void handleToolCall(message.toolCall.functionCalls);
             return;
           }
 

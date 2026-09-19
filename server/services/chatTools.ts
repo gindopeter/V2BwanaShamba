@@ -7,27 +7,28 @@
  * These declarations give that path the same ability, backed by the same
  * user-scoped data service the app itself uses.
  */
+import { Type, type FunctionDeclaration } from '@google/genai';
 import { llm } from './llm/index.ts';
 import type { GenerateOptions } from './llm/types.ts';
 import { VALID_TASK_TYPES, createTask, listTasks, listZones } from './farmData.ts';
 
 /** Declarations sent to the model. Kept small — reads the model needs to act, plus the write. */
-export const FARM_TOOL_DECLARATIONS = [
+export const FARM_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: 'list_zones',
     description:
       "List this farmer's own zones with their id, name, crop type, planting date and area. " +
       'Call this before creating a task so you use a real zone_id.',
-    parameters: { type: 'OBJECT', properties: {} },
+    parameters: { type: Type.OBJECT, properties: {} },
   },
   {
     name: 'list_tasks',
     description: "List this farmer's scheduled tasks, newest schedule first.",
     parameters: {
-      type: 'OBJECT',
+      type: Type.OBJECT,
       properties: {
         status: {
-          type: 'STRING',
+          type: Type.STRING,
           description: "Optional filter, e.g. 'Pending' or 'Completed'. Omit for all tasks.",
         },
       },
@@ -40,22 +41,22 @@ export const FARM_TOOL_DECLARATIONS = [
       'Only tell the farmer the task was added if this returns success: true; if it returns an ' +
       'error, tell them it could not be saved and say why.',
     parameters: {
-      type: 'OBJECT',
+      type: Type.OBJECT,
       properties: {
         zone_id: {
-          type: 'INTEGER',
+          type: Type.INTEGER,
           description: "Id of one of this farmer's own zones, from list_zones. Never guess.",
         },
         task_type: {
-          type: 'STRING',
+          type: Type.STRING,
           description: `Must be one of: ${VALID_TASK_TYPES.join(', ')}.`,
         },
         scheduled_time: {
-          type: 'STRING',
+          type: Type.STRING,
           description: "When to do it, ISO 8601, e.g. '2026-03-14T08:00:00'.",
         },
-        duration_minutes: { type: 'INTEGER', description: 'Expected duration in minutes.' },
-        reasoning: { type: 'STRING', description: 'Why this task is needed.' },
+        duration_minutes: { type: Type.INTEGER, description: 'Expected duration in minutes.' },
+        reasoning: { type: Type.STRING, description: 'Why this task is needed.' },
       },
       required: ['zone_id', 'task_type', 'scheduled_time'],
     },

@@ -814,6 +814,13 @@ registerProcessor('pcm-capture-processor', PCMCaptureProcessor);
           return;
         }
 
+        // The voice session added a task — refresh the dashboard the same way
+        // the typed chat path does.
+        if (msg.type === 'tasks_changed') {
+          onFarmDataChanged?.();
+          return;
+        }
+
         if (msg.type === 'error') {
           console.error('[LiveVoice] Proxy error:', msg.message);
           setMessages(prev => [...prev, { role: 'system', text: `Session error: ${msg.message}` }]);
