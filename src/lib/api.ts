@@ -9,6 +9,8 @@ export interface Zone {
   /** Days from planting to harvest for this crop, per server/constants/crops.ts. */
   total_growth_days: number;
   expected_yield_kg: number;
+  /** Whether expected_yield_kg is one season's total or a mature stand's yearly yield. */
+  yield_basis?: 'per-season' | 'per-year';
   actual_yield_kg: number;
   expected_harvest_date: string;
   next_fertigation_date: string | null;

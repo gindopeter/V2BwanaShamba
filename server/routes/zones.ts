@@ -6,6 +6,7 @@ import {
   getDaysToHarvest,
   getGrowthStage,
   getYieldPerAcre,
+  getYieldBasis,
 } from '../constants/crops.ts';
 import { generateAndSavePlan } from '../services/planning.ts';
 
@@ -63,6 +64,7 @@ router.get('/', isAuthenticated, async (req, res) => {
         total_growth_days: maxDays,
         growth_stage: getGrowthStage(diffDays, maxDays),
         expected_yield_kg: predictedYield,
+        yield_basis: getYieldBasis(zone.crop_type),
         expected_harvest_date: harvestDate.toISOString(),
       };
     });
