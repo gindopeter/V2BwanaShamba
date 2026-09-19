@@ -19,6 +19,8 @@ interface LayoutProps {
   onNavigate: (view: string) => void;
   user: AuthUser;
   onLogout: () => void;
+  /** Called when a chat turn added or changed tasks, so the dashboard can reload. */
+  onFarmDataChanged?: () => void;
 }
 
 type MiniMode = 'chat' | 'voice' | 'camera';
@@ -36,11 +38,13 @@ function MiniChatPanel({
   initialMode,
   onExpand,
   onClose,
+  onFarmDataChanged,
 }: {
   lang: Language;
   initialMode: MiniMode;
   onExpand: () => void;
   onClose: () => void;
+  onFarmDataChanged?: () => void;
 }) {
   const [mode, setMode] = useState<MiniMode>(initialMode);
   const [messages, setMessages] = useState<ChatMsg[]>([
@@ -134,6 +138,7 @@ function MiniChatPanel({
       if (!contentType.includes('text/event-stream') || !res.body) {
         const data = await res.json().catch(() => ({}));
         rememberConversation(data.conversationId);
+        if (data.tasksChanged) onFarmDataChanged?.();
         setMessages(prev => [...prev, { role: 'ai', text: data.reply || '...' }]);
         return;
       }
@@ -173,8 +178,9 @@ function MiniChatPanel({
             } else if (parsed.type === 'error' && !started) {
               started = true;
               setMessages(prev => [...prev, { role: 'ai', text: parsed.message || (lang === 'sw' ? 'Samahani, jaribu tena.' : 'Sorry, please try again.') }]);
-            } else if ((parsed.type === 'start' || parsed.type === 'done') && parsed.conversationId) {
+            } else if (parsed.type === 'start' || parsed.type === 'done') {
               rememberConversation(parsed.conversationId);
+              if (parsed.type === 'done' && parsed.tasksChanged) onFarmDataChanged?.();
             }
           } catch { /* ignore malformed SSE lines */ }
         }
@@ -512,7 +518,7 @@ function MiniChatPanel({
 }
 
 // ── Layout ─────────────────────────────────────────────────────────────────────
-export default function Layout({ children, currentView, onNavigate, user, onLogout }: LayoutProps) {
+export default function Layout({ children, currentView, onNavigate, user, onLogout, onFarmDataChanged }: LayoutProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isMiniOpen, setIsMiniOpen] = useState(false);
   const [miniMode, setMiniMode] = useState<MiniMode>('chat');
@@ -747,6 +753,7 @@ export default function Layout({ children, currentView, onNavigate, user, onLogo
               initialMode={miniMode}
               onExpand={() => { setIsMiniOpen(false); onNavigate('assistant'); }}
               onClose={() => setIsMiniOpen(false)}
+              onFarmDataChanged={onFarmDataChanged}
             />
           </div>
 

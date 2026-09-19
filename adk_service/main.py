@@ -24,6 +24,12 @@ if gemini_key and not os.environ.get("GOOGLE_API_KEY"):
     os.environ["GOOGLE_API_KEY"] = gemini_key
 
 from adk_service.agents.farm_agents import root_agent
+from adk_service.tools.user_context import (
+    CURRENT_USER_ID,
+    USER_ID_STATE_KEY,
+    NoUserContext,
+    parse_user_id,
+)
 
 session_service = InMemorySessionService()
 runner = Runner(agent=root_agent, app_name="bwanashamba", session_service=session_service)
@@ -79,17 +85,36 @@ async def _prepare_session_and_content(request: ChatRequest):
     user_id = request.user_id or "default_user"
     session_id = request.session_id
 
+    # The numeric app user id the tools act on behalf of. Carried in session
+    # state (read via ToolContext) and in a contextvar as a fallback.
+    try:
+        app_user_id = parse_user_id(user_id)
+    except NoUserContext:
+        app_user_id = None
+    state = {USER_ID_STATE_KEY: app_user_id} if app_user_id else {}
+
+    async def _new_session():
+        return await session_service.create_session(
+            app_name="bwanashamba", user_id=user_id, state=state
+        )
+
     if not session_id:
-        session = await session_service.create_session(app_name="bwanashamba", user_id=user_id)
+        session = await _new_session()
         session_id = session.id
     else:
         try:
             existing = await session_service.get_session(app_name="bwanashamba", user_id=user_id, session_id=session_id)
             if not existing:
-                session = await session_service.create_session(app_name="bwanashamba", user_id=user_id)
+                session = await _new_session()
                 session_id = session.id
+            elif app_user_id and not (existing.state or {}).get(USER_ID_STATE_KEY):
+                # Session predates this state key (e.g. created before a restart).
+                try:
+                    existing.state[USER_ID_STATE_KEY] = app_user_id
+                except Exception:
+                    pass
         except Exception:
-            session = await session_service.create_session(app_name="bwanashamba", user_id=user_id)
+            session = await _new_session()
             session_id = session.id
 
     parts = []
@@ -106,7 +131,7 @@ async def _prepare_session_and_content(request: ChatRequest):
         raise HTTPException(status_code=400, detail="No message or image provided")
 
     content = types.Content(role="user", parts=parts)
-    return user_id, session_id, content
+    return user_id, session_id, content, app_user_id
 
 
 @app.post("/chat")
@@ -119,11 +144,12 @@ async def chat(request: ChatRequest, raw_request: FastAPIRequest):
     print(f"[ADK] Chat request: message='{request.message[:50]}', user={request.user_id}, has_image={bool(request.image)}, stream={request.stream}")
 
     try:
-        user_id, session_id, content = await _prepare_session_and_content(request)
+        user_id, session_id, content, app_user_id = await _prepare_session_and_content(request)
+        CURRENT_USER_ID.set(app_user_id)
 
         if request.stream:
             return StreamingResponse(
-                _stream_response(user_id, session_id, content),
+                _stream_response(user_id, session_id, content, app_user_id),
                 media_type="text/event-stream",
                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
             )
@@ -152,8 +178,10 @@ async def chat(request: ChatRequest, raw_request: FastAPIRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def _stream_response(user_id: str, session_id: str, content):
+async def _stream_response(user_id: str, session_id: str, content, app_user_id=None):
     agent_name = root_agent.name
+    # StreamingResponse may run in a fresh context, so re-bind the acting user.
+    CURRENT_USER_ID.set(app_user_id)
     try:
         yield f"data: {json.dumps({'type': 'start', 'session_id': session_id})}\n\n"
 

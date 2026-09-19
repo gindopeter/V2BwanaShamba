@@ -7,6 +7,7 @@ import { chatViaADK, createADKStreamFetch } from '../services/adk.ts';
 import { getMemoryContext, extractAndSaveMemories } from '../services/memory.ts';
 import { issueLiveToken } from '../liveVoiceProxy.ts';
 import { detectLanguage, languageDirective } from '../services/language.ts';
+import { countTasks } from '../services/farmData.ts';
 
 const router = Router();
 
@@ -278,6 +279,25 @@ router.post('/', isAuthenticated, async (req, res) => {
     const langPrefix = langDirective ? `[${langDirective}]\n\n` : '';
     const enrichedMessage = langPrefix + farmContextPrefix + memoryContext + (message || 'Analyze this image.');
 
+    // The AI can add tasks mid-turn (ADK tools, or the direct-Gemini tool loop).
+    // Compare the farmer's task count across the turn so the client knows to
+    // refresh its task list instead of showing a stale one.
+    let taskCountBefore = -1;
+    try {
+      taskCountBefore = await countTasks(userId);
+    } catch (err: any) {
+      console.error('[chat] task count snapshot failed:', err.message);
+    }
+    const tasksDidChange = async (toolFlag = false) => {
+      if (toolFlag) return true;
+      if (taskCountBefore < 0) return false;
+      try {
+        return (await countTasks(userId)) !== taskCountBefore;
+      } catch {
+        return false;
+      }
+    };
+
     // ── Streaming path ──────────────────────────────────────────────────────────
     if (wantStream) {
       res.setHeader('Content-Type', 'text/event-stream');
@@ -289,6 +309,7 @@ router.post('/', isAuthenticated, async (req, res) => {
 
       let fullReply = '';
       let agentName = 'gemini-direct';
+      let directToolWroteTasks = false;
       let sessionSaved = false;
       let clientDisconnected = false;
       let adkStreamCtrl: { abort: () => void } | null = null;
@@ -377,7 +398,7 @@ router.post('/', isAuthenticated, async (req, res) => {
           parts: [{ text: msg.text }],
         }));
 
-        fullReply = await chatViaGeminiDirectStream(
+        const direct = await chatViaGeminiDirectStream(
           enrichedMessage,
           contents,
           image,
@@ -390,6 +411,8 @@ router.post('/', isAuthenticated, async (req, res) => {
             }
           }
         );
+        fullReply = direct.reply;
+        directToolWroteTasks = direct.tasksChanged;
       }
 
       if (fullReply) {
@@ -419,7 +442,10 @@ router.post('/', isAuthenticated, async (req, res) => {
       }
 
       if (!clientDisconnected) {
-        res.write(`data: ${JSON.stringify({ type: 'done', conversationId: convId, agent: agentName })}\n\n`);
+        const tasksChanged = await tasksDidChange(directToolWroteTasks);
+        res.write(
+          `data: ${JSON.stringify({ type: 'done', conversationId: convId, agent: agentName, tasksChanged })}\n\n`
+        );
         res.end();
       }
 
@@ -429,6 +455,7 @@ router.post('/', isAuthenticated, async (req, res) => {
     // ── Non-streaming path ──────────────────────────────────────────────────────
     let reply: string;
     let agentName = 'gemini-direct';
+    let directToolWroteTasks = false;
 
     try {
       const adkResult = await chatViaADK(
@@ -462,7 +489,9 @@ router.post('/', isAuthenticated, async (req, res) => {
         parts: [{ text: msg.text }],
       }));
 
-      reply = await chatViaGeminiDirect(enrichedMessage, contents, image, clientMimeType, userId, responseLang);
+      const direct = await chatViaGeminiDirect(enrichedMessage, contents, image, clientMimeType, userId, responseLang);
+      reply = direct.reply;
+      directToolWroteTasks = direct.tasksChanged;
     }
 
     await dbRun(
@@ -488,9 +517,24 @@ router.post('/', isAuthenticated, async (req, res) => {
     // Learn durable facts about the farmer in the background — do not await.
     void extractAndSaveMemories(userId, message || '', reply!);
 
-    res.json({ reply: reply!, conversationId: convId, agent: agentName });
+    res.json({
+      reply: reply!,
+      conversationId: convId,
+      agent: agentName,
+      tasksChanged: await tasksDidChange(directToolWroteTasks),
+    });
   } catch (err: any) {
     console.error('[chat] Error:', err.message);
+    // On the streaming path the SSE headers are already out, so a JSON error
+    // response would throw ERR_HTTP_HEADERS_SENT and take the process down.
+    if (res.headersSent) {
+      try {
+        res.write(
+          `data: ${JSON.stringify({ type: 'error', message: 'Sorry, I encountered an error processing your request.' })}\n\n`
+        );
+      } catch { /* socket already gone */ }
+      return res.end();
+    }
     res.status(500).json({ reply: 'Sorry, I encountered an error processing your request.' });
   }
 });

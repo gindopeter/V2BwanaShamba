@@ -459,7 +459,7 @@ export default function App() {
   };
 
   return (
-    <Layout currentView={currentView} onNavigate={navigate} user={user} onLogout={handleLogout}>
+    <Layout currentView={currentView} onNavigate={navigate} user={user} onLogout={handleLogout} onFarmDataChanged={loadData}>
       {showCompletionBanner && (
         <div
           className="px-5 lg:px-8 py-2.5 flex items-center gap-3"
@@ -700,6 +700,7 @@ export default function App() {
           <LiveScout
             initialMessage={chatPrefill ?? undefined}
             onInitialMessageConsumed={() => setChatPrefill(null)}
+            onFarmDataChanged={loadData}
           />
         )}
         {currentView === 'map' && <FarmMap zones={zones} onUpdate={loadData} onEdit={z => setEditingZone(z)} onAdd={() => setShowZoneModal(true)} farmSizeAcres={user?.farm_size_acres} lang={lang} />}

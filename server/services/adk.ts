@@ -3,21 +3,12 @@
  * All ADK communication is server-to-server — the ADK token never reaches the browser.
  */
 
+import { getInternalToken } from './internalAuth.ts';
+
 const ADK_URL = process.env.ADK_SERVICE_URL || 'http://localhost:8001';
 
-// Same dev default as adk_service/main.py so the two services stay in sync
-// without requiring ADK_INTERNAL_TOKEN to be set in development.
-const ADK_DEV_DEFAULT_TOKEN = 'bwanashamba-internal-dev-token';
-
 function getAdkToken(): string {
-  const token = process.env.ADK_INTERNAL_TOKEN;
-  if (!token) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('ADK_INTERNAL_TOKEN must be set in production');
-    }
-    return ADK_DEV_DEFAULT_TOKEN;
-  }
-  return token;
+  return getInternalToken();
 }
 
 /**

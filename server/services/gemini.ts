@@ -4,6 +4,7 @@ import { dbAll, dbGet } from '../db.ts';
 import { getDaysToHarvest, getGrowthStage } from '../constants/crops.ts';
 import { TANZANIA_DISTRICT_COORDS } from '../constants/district_coords.ts';
 import { languageDirective, type DetectedLanguage } from './language.ts';
+import { streamWithFarmTools } from './chatTools.ts';
 
 // Region-centre fallback coords (first/main city per region)
 const REGION_FALLBACK: Record<string, { lat: number; lon: number }> = {
@@ -223,6 +224,15 @@ ${weatherContext}
 ${farmContext}
 ${memoryContext}
 Current Date/Time: ${new Date().toLocaleString('en-US', { timeZone: 'Africa/Dar_es_Salaam' })} EAT
+
+TASK LIST: You can add tasks to the farmer's task list yourself. When they ask you to add, schedule or
+remind them of a task:
+1. Call list_zones and pick a zone_id from their own zones. Never guess a zone id; if they have no zones,
+   say so and ask them to create one.
+2. Call create_task with a task_type of Irrigation, Fertigation or Scouting.
+3. Only say the task has been added if create_task returned success: true. If it returned an error, tell
+   them plainly that it could not be saved and repeat the reason. Never confirm a task you did not create.
+
 Be concise, practical, and specific. Prioritise advice that is immediately actionable for the farmer.`;
 }
 
@@ -237,7 +247,7 @@ export async function chatViaGeminiDirect(
   mimeType?: string,
   userId?: number,
   responseLang?: DetectedLanguage | null
-): Promise<string> {
+): Promise<{ reply: string; tasksChanged: boolean }> {
   const systemInstruction = await buildChatSystemInstruction(userId, responseLang);
 
   if (image) {
@@ -247,8 +257,12 @@ export async function chatViaGeminiDirect(
     }
   }
 
-  const text = await llm.generate({ contents, systemInstruction });
-  return text || 'I could not generate a response.';
+  const { text, tasksChanged } = await streamWithFarmTools(
+    { contents, systemInstruction },
+    userId,
+    () => {}
+  );
+  return { reply: text || 'I could not generate a response.', tasksChanged };
 }
 
 /**
@@ -264,7 +278,7 @@ export async function chatViaGeminiDirectStream(
   userId: number | undefined,
   responseLang: DetectedLanguage | null | undefined,
   onChunk: (piece: string) => void
-): Promise<string> {
+): Promise<{ reply: string; tasksChanged: boolean }> {
   const systemInstruction = await buildChatSystemInstruction(userId, responseLang);
 
   if (image) {
@@ -274,7 +288,11 @@ export async function chatViaGeminiDirectStream(
     }
   }
 
-  const full = await llm.generateStream({ contents, systemInstruction }, onChunk);
-  return full || 'I could not generate a response.';
+  const { text, tasksChanged } = await streamWithFarmTools(
+    { contents, systemInstruction },
+    userId,
+    onChunk
+  );
+  return { reply: text || 'I could not generate a response.', tasksChanged };
 }
 

@@ -8,7 +8,6 @@ from adk_service.tools.farm_tools import (
     create_task,
     get_recent_logs,
     get_zone_logs,
-    update_zone_irrigation,
     get_farm_summary,
     get_pest_info,
     get_market_prices,
@@ -135,11 +134,14 @@ Crop-specific irrigation guidance (weekly water needs):
 If the farmer grows something not on this list, give a sound recommendation from your own knowledge of the crop —
 never tell them the crop is unsupported.
 
-Use get_all_zones to check current irrigation status.
+Use get_all_zones to check the farmer's zones.
 Use get_zone_details for specific zone data.
 Use get_weather_forecast to get real 7-day weather data for the farmer's region.
-Use update_zone_irrigation to change a zone's irrigation status. Valid statuses are ONLY 'Off' or 'Running'.""",
-    tools=[get_all_zones, get_zone_details, get_zone_tasks, update_zone_irrigation, get_zone_logs, get_weather_forecast],
+
+You cannot switch irrigation on or off remotely — the app has no remote valve control. When the farmer
+wants water applied, hand the request to the task planner so an Irrigation task is scheduled in their task
+list, and tell them that is what you have done. Never claim to have started or stopped irrigation.""",
+    tools=[get_all_zones, get_zone_details, get_zone_tasks, get_zone_logs, get_weather_forecast],
 )
 
 task_planner_agent = Agent(
@@ -168,6 +170,14 @@ IMPORTANT: When scheduling fertigation or irrigation tasks:
 Use get_all_tasks and get_pending_tasks to review current workload.
 Use create_task to schedule new tasks.
 Use get_all_zones to understand what each zone needs.
+
+ADDING A TASK — follow this exactly:
+1. Call get_all_zones first and pick a zone_id from the farmer's OWN zones. Never guess a zone id.
+   If they have no zones, say so and ask them to create one — do not invent one.
+2. Call create_task.
+3. Only tell the farmer the task has been added if create_task returned success: true.
+   If it returned an error, tell them plainly that it could not be saved and repeat the reason.
+   Never confirm a task you did not successfully create.
 Use get_weather_forecast to check weather before scheduling weather-sensitive tasks.
 
 Valid task types: Irrigation, Fertigation, Scouting (only these three are supported)""",

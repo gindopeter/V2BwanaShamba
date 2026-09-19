@@ -48,6 +48,13 @@ export class GeminiProvider implements LLMProvider {
     return full;
   }
 
+  async generateStreamRaw(opts: GenerateOptions, onChunk: (chunk: any) => void): Promise<void> {
+    const stream = await this.client().models.generateContentStream(this.buildRequest(opts));
+    for await (const chunk of stream) {
+      onChunk(chunk);
+    }
+  }
+
   async generateRaw(opts: GenerateOptions): Promise<any> {
     return this.client().models.generateContent(this.buildRequest(opts));
   }

@@ -32,6 +32,14 @@ export interface LLMProvider {
   generateStream(opts: GenerateOptions, onChunk: (piece: string) => void): Promise<string>;
 
   /**
+   * Streaming generation that hands back each raw provider chunk instead of
+   * just its text. Needed for tool/function calling, where a chunk may carry a
+   * function call rather than prose. Callers read chunks through the
+   * provider-neutral helpers below rather than poking at provider fields.
+   */
+  generateStreamRaw(opts: GenerateOptions, onChunk: (chunk: any) => void): Promise<void>;
+
+  /**
    * Returns the raw provider response object. Used for non-text outputs that
    * need provider-specific fields (e.g. TTS audio bytes). Kept narrow on purpose.
    */

@@ -43,9 +43,12 @@ interface Conversation {
 export default function LiveScout({
   initialMessage,
   onInitialMessageConsumed,
+  onFarmDataChanged,
 }: {
   initialMessage?: string;
   onInitialMessageConsumed?: () => void;
+  /** Called when a chat turn added or changed tasks, so the dashboard can reload. */
+  onFarmDataChanged?: () => void;
 } = {}) {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isLiveVoice, setIsLiveVoice] = useState(false);
@@ -475,9 +478,12 @@ export default function LiveScout({
                   } else if (parsed.type === 'start' && parsed.conversationId && !activeConversationIdRef.current) {
                     activeConversationIdRef.current = parsed.conversationId;
                     setActiveConversationId(parsed.conversationId);
-                  } else if (parsed.type === 'done' && parsed.conversationId && !activeConversationIdRef.current) {
-                    activeConversationIdRef.current = parsed.conversationId;
-                    setActiveConversationId(parsed.conversationId);
+                  } else if (parsed.type === 'done') {
+                    if (parsed.conversationId && !activeConversationIdRef.current) {
+                      activeConversationIdRef.current = parsed.conversationId;
+                      setActiveConversationId(parsed.conversationId);
+                    }
+                    if (parsed.tasksChanged) onFarmDataChanged?.();
                   }
                 } catch { }
               }
@@ -501,6 +507,7 @@ export default function LiveScout({
           setActiveConversationId(data.conversationId);
         }
         setMessages(prev => [...prev, { role: 'ai', text: data.reply || '' }]);
+        if (data.tasksChanged) onFarmDataChanged?.();
         loadConversations();
       }
     } catch (err) {
