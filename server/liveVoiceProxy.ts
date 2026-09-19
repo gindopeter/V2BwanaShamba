@@ -4,7 +4,7 @@ import { GoogleGenAI, Modality } from '@google/genai';
 import { randomUUID } from 'crypto';
 import { URL } from 'url';
 import { dbGet, dbAll } from './db.ts';
-import { FARM_TOOL_DECLARATIONS, runFarmTool } from './services/chatTools.ts';
+import { VOICE_TOOL_DECLARATIONS, createVoiceTaskSession } from './services/chatTools.ts';
 
 const BASE_SYSTEM_INSTRUCTION =
   'LANGUAGE RULE — HIGHEST PRIORITY: Listen to what language the user is speaking RIGHT NOW. ' +
@@ -18,11 +18,15 @@ const BASE_SYSTEM_INSTRUCTION =
   'rainfall patterns, seasonal calendars, and can draw on satellite/remote-sensing knowledge for soil and land analysis. ' +
   'When asked, you can compare Tanzania\'s agriculture to other countries and highlight lessons applicable to Tanzanian farmers. ' +
   'Tailor every answer to the farmer\'s specific region and crops. Keep answers practical, concise, and actionable. ' +
-  'TASK LIST: you can add tasks to the farmer\'s task list. When they ask you to add, schedule or remind them of ' +
-  'a task, first call list_zones and pick a zone_id from their own zones — never guess one — then call create_task ' +
-  'with a task_type of Irrigation, Fertigation or Scouting. Only say the task has been added if create_task returned ' +
-  'success: true; if it returned an error, tell them plainly it could not be saved and why. Never confirm a task you ' +
-  'did not create. Say the tasks out loud naturally — the farmer is listening, not reading.';
+  'TASK LIST: you can add tasks to the farmer\'s task list, but always confirm with them first, because they are ' +
+  'listening rather than reading and cannot undo a mistake. When they ask you to add, schedule or remind them of a ' +
+  'task: (1) call list_zones and pick a zone_id from their own zones — never guess one; (2) call propose_task with a ' +
+  'task_type of Irrigation, Fertigation or Scouting — this saves nothing; (3) read the returned summary back to them ' +
+  'in their own language and ask if it is correct; (4) when they agree, call confirm_task. If they correct a detail, ' +
+  'call propose_task again with the correction and read it back again. If they decline, save nothing and say so. ' +
+  'Only say the task is saved once confirm_task returned success: true; if it returned an error, tell them plainly ' +
+  'it was not saved and why. Never claim to have saved a task you did not. Speak naturally — dates and times out ' +
+  'loud the way a person would say them, never as raw timestamps.';
 
 async function buildSystemInstruction(userId: number): Promise<string> {
   try {
@@ -120,14 +124,17 @@ async function handleSession(ws: WebSocket, userId: number) {
   // rejection (before the session was ready) from a normal end-of-session close.
   let setupCompleted = false;
 
+  // Holds the pending task proposal and enforces the read-back gate.
+  const voiceTasks = createVoiceTaskSession(userId);
+
   async function handleToolCall(functionCalls: any[]) {
     const functionResponses: any[] = [];
     let tasksChanged = false;
 
     for (const call of functionCalls) {
-      const response = await runFarmTool(call.name, call.args || {}, userId);
-      if (call.name === 'create_task' && response?.success) tasksChanged = true;
-      functionResponses.push({ id: call.id, name: call.name, response });
+      const { result, tasksChanged: changed } = await voiceTasks.run(call.name, call.args || {});
+      if (changed) tasksChanged = true;
+      functionResponses.push({ id: call.id, name: call.name, response: result });
     }
 
     try {
@@ -151,7 +158,7 @@ async function handleSession(ws: WebSocket, userId: number) {
         systemInstruction: systemInstruction,
         outputAudioTranscription: {},
         inputAudioTranscription: {},
-        tools: [{ functionDeclarations: FARM_TOOL_DECLARATIONS }],
+        tools: [{ functionDeclarations: VOICE_TOOL_DECLARATIONS }],
       },
       callbacks: {
         onopen: () => {
@@ -191,10 +198,12 @@ async function handleSession(ws: WebSocket, userId: number) {
           }
 
           if (message.serverContent?.inputTranscription?.text) {
+            voiceTasks.noteUserSpeech();
             send({ type: 'input_transcript', text: message.serverContent.inputTranscription.text });
           }
 
           if (message.serverContent?.turnComplete) {
+            voiceTasks.noteModelTurnComplete();
             send({ type: 'turn_complete' });
           }
         },

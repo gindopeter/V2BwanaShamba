@@ -74,7 +74,21 @@ export interface CreateTaskInput {
   reasoning?: string | null;
 }
 
-export async function createTask(userId: number, input: CreateTaskInput): Promise<any> {
+export interface ValidatedTask {
+  zoneId: number;
+  zoneName: string;
+  taskType: TaskType;
+  scheduledTime: string;
+  duration: number | null;
+  reasoning: string | null;
+}
+
+/**
+ * Checks everything createTask checks — zone ownership, task type, date — and
+ * resolves the zone name, without writing anything. Lets a caller offer the
+ * farmer an accurate read-back before committing (the voice flow does this).
+ */
+export async function validateTask(userId: number, input: CreateTaskInput): Promise<ValidatedTask> {
   const zoneId = Number(input.zone_id);
   if (!zoneId || Number.isNaN(zoneId)) {
     throw new FarmDataError('A valid zone_id is required');
@@ -95,29 +109,43 @@ export async function createTask(userId: number, input: CreateTaskInput): Promis
   // Ownership check — throws 404 for a zone belonging to another farmer.
   const zone = await getZone(userId, zoneId);
 
-  const duration =
+  const parsed =
     input.duration_minutes != null && input.duration_minutes !== ''
       ? parseInt(String(input.duration_minutes), 10)
       : null;
+
+  return {
+    zoneId,
+    zoneName: zone.name,
+    taskType: taskType as TaskType,
+    scheduledTime,
+    duration: parsed != null && Number.isNaN(parsed) ? null : parsed,
+    reasoning: input.reasoning || null,
+  };
+}
+
+export async function createTask(userId: number, input: CreateTaskInput): Promise<any> {
+  const { zoneId, zoneName, taskType, scheduledTime, duration, reasoning } =
+    await validateTask(userId, input);
 
   const info = await dbRun(
     'INSERT INTO tasks (zone_id, task_type, scheduled_time, duration_minutes, reasoning) VALUES (?, ?, ?, ?, ?)',
     zoneId,
     taskType,
     scheduledTime,
-    Number.isNaN(duration as number) ? null : duration,
-    input.reasoning || null
+    duration,
+    reasoning
   );
 
   return {
     id: info.lastInsertRowid,
     zone_id: zoneId,
-    zone_name: zone.name,
+    zone_name: zoneName,
     task_type: taskType,
     scheduled_time: scheduledTime,
     duration_minutes: duration,
     status: 'Pending',
-    reasoning: input.reasoning || null,
+    reasoning,
   };
 }
 
